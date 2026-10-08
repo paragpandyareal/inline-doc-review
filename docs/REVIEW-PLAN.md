@@ -19,7 +19,7 @@ _Started 2026-10-08. If you are a new Claude Code session picking this up, read 
 |---|---|---|
 | Information security and hack-proofing | **done** | `docs/reviews/security.md` |
 | QA (exploratory, new tests) | running | `docs/reviews/qa.md` |
-| Code quality | running | `docs/reviews/code-quality.md` |
+| Code quality | **done** | `docs/reviews/code-quality.md` |
 | Transparency and docs | **done** | `docs/reviews/transparency.md` |
 | Simplification and bloat | **done** | `docs/reviews/simplification.md` |
 

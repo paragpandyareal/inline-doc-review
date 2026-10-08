@@ -1,65 +1,64 @@
 # inline-doc-review: code-quality review (v0.5.0)
 
-Scope: every file under `hooks/`, `scripts/`, `types/`, `tests/` and `docs/HOW-IT-WORKS.md`, checked against `claude-code.d.ts` and `reference.md` (2.1.295). `claude plugin validate --strict` passes. All 25 tests pass. I confirmed some claims with extra tests that I ran on a copy in `/tmp/claude-1001/codereview/idr`:
+Scope: everything in `hooks/`, `scripts/`, `types/`, `tests/` and `docs/`, checked against `claude-code.d.ts` and `reference.md` (2.1.295). `claude plugin validate --strict` passes, and 25/25 tests pass. I confirmed some claims with extra tests that I ran on a copy in `/tmp/claude-1001/codereview/idr`:
 
-- **State limit:** opening a 20,000-line Markdown file fails with `$.state.set: the value is 6546686 characters, over the 4194304 limit`. The command hook is skipped.
-- **HTML open time:** an 8,000-paragraph HTML file takes 8.0 s to open, close to the 10 s hook budget. 3,000 paragraphs take 1.26 s.
-- **Keypress latency:** in a 6,000-line Markdown file, 10 arrow keys take more than 5 s.
-- **Race:** a slow reload of file A that finishes after the user switches to file B leaves the tab bar on B and the viewer showing A.
+- A 20k-line Markdown file fails with `$.state.set: the value is 6546686 characters, over the 4194304 limit`, and the hook is skipped.
+- An 8,000-paragraph HTML file takes **8.0 s** to open (the hook budget is 10 s).
+- In a 6,000-line Markdown file, 10 arrow keys take **more than 5 s**.
+- A slow reload of A that lands after the user switches to B leaves the tab bar on B and the **viewer showing A**.
 
 ## Findings
 
-| ID | Sev | Where | Problem | Why it matters | Fix |
-|---|---|---|---|---|---|
-| F1 | High | register.tsx:161-171, 181-187, 426-434 | `track`, `show` and `toggleSource` read `current`, wait for `loadDoc` (up to 60 s for docx/xlsx/pdf), then write `doc` without checking again. The writes are separate (`current`, then `doc`, then `view`). Confirmed: a reload of A that finishes after switching to B shows A's content under B's tab. | Comments get saved against the wrong path. The selection, the diff glow and the "updated" toast can all apply to the wrong file. | Hold `{path, doc, view}` in one atom and write it in one `update`. After `await loadDoc`, check `current === path` again, or use a load sequence number and drop stale results. |
-| F2 | High | register.tsx:66-110, 167, 186 | The whole parsed document (rows plus spans, roughly 3× the source size) goes into one `$.state` value. The limit is 4,194,304 characters. Confirmed failure at about 1.8 MB of Markdown. The hook is skipped and nothing is shown to the user. | Large files fail without any message. Every render also reads the whole document across the state boundary. | Keep the parsed document in a module-level cache keyed by `path+mtime`, and keep only `{path, mtime, rowCount}` in state. Or cap the rows (as extract.py does with MAX_ROWS) and set `note`. At minimum, check the serialized size and return `kind:'error'`. |
-| F3 | High | html.ts:23, 110 | `lineAt(offset)` runs `html.slice(0,offset).split('\n')` on every tag, which makes parsing O(n²). Measured 8 s at about 400 KB. | Parsing runs in the hook's own time, so a medium-sized page hits the 10 s budget and the hook is dropped. | Build a newline-offset table once and binary-search it, or count newlines incrementally as `pattern.lastIndex` advances. |
-| F4 | High | register.tsx:795-837 | Every `ui.render` runs `wrapRows` on the whole document, plus the stripe pass, three `rows.some` checks and `rows.filter` for the count. Every arrow key, scroll and toast causes a redraw. Measured at more than 0.5 s per key on 6,000 lines. | The pane becomes unusable on long documents. | Memoize `visual`, `firstVisual`, `stripe`, `unit` and `count` by `(path, docVersion, textWidth, raw)` in a module cache. Only the visible slice needs work per render. |
-| F5 | High | register.tsx:612-622, 1119 | `deliver('submit')` marks comments `sent`, but `$.prompt.submit` only *queues* the prompt. If Claude is in the middle of a turn, that turn's `turn.complete` clears the "sent" comments and shows "Claude finished with N comments" before Claude has seen them. `track` (173-177) does the same on any reload of the file. | The spinner and toast are wrong, and the user loses their only progress signal. | Tag sent comments with a batch id. Clear them only on the `turn.complete` of the turn that the submit started (record it on `prompt.submit` when `e.text` matches), or after the submit promise resolves. |
-| F6 | Medium | register.tsx:1111-1123 | `deliver('fill')` marks comments `sent` even though the user may never press Enter. The fill also replaces whatever the user had already typed (`mode:'replace'`). | The spinner can show "Claude is working" forever, and the user's draft prompt is lost without warning. | Keep the comments as `draft` (or a new `filled` state) until a matching `prompt.submit` is seen. Use `mode:'append'` when the box is not empty. |
-| F7 | Medium | register.tsx:591-603, 374-391 | After every Bash call, including subagent calls, the hook walks `session.cwd` up to 3 levels and 4,000 entries, one `$.fs.list` round trip per directory. Whatever it finds is added to the tabs (up to 20). `files.slice(-30)` can then evict the user's open file. Any file another process touched in that 1 s window counts. With cwd=`$HOME` (this user's setup), DFS order can use up the budget before reaching the project. | Every Bash call gets slower, tabs fill with unrelated files, and output written outside cwd is never found. | Skip the scan when `e.agentId` is set. Only scan when the command text names a path or an output extension. Never evict `current`. Add scanned files to a "new files" list instead of the tabs. |
-| F8 | Medium | register.tsx:355-362, 796-801, 911-912 | The render hook writes module-level `drawn` (total, height, firstVisual), and `ui.message` uses it for scrolling. With two surfaces (terminal + desktop, both tested) the last one drawn wins. `drawn` is also empty after a hot reload. | Scrolling and keep-the-cursor-in-view use another surface's geometry, so PgDn jumps the wrong distance. | Compute the geometry in `ui.message` from the same memoized layout (F4), keyed by `e.surface`. Keep render pure. |
-| F9 | Medium | register.tsx:641-706 | `ui.message` reads `v` and `sel` once, then computes `cur`, `top` and `left` from those snapshots. Only the final `update` closure sees fresh state. Two `move` posts handled concurrently both start from the same `v.cur`. | Fast key repeat drops moves, and the shift-extend anchor jumps. | Do the whole move inside the `update($, view, old => …)` closure, deriving from `old.cur`. |
-| F10 | Medium | register.tsx:813-815, 1057-1059; types `ReviewComment.from/to` | Draft comments store row indices and a label. After Claude or the user edits the file, `from`/`to` point at different rows. Markers, `jumpTo` and "selecting the same place edits the comment" (label equality) all drift. | Comments attach to the wrong text after any edit, which is the plugin's main use case. | Re-anchor drafts on reload by finding `quote` in the new rows (or the nearest match), and flag any that can't be matched as "stale". |
-| F11 | Medium | viewer.tsx:165-187; tabs.tsx:221-241 | `surface.every` is started during render whenever `flashKey` or `pop` changes. The API says to start it once, while `state` is undefined. Two flashes within about 1.3 s run two timers, the older one clears `flash` early, and both call `setState` each tick. Tabs stores a closure (`stop`) in client state. | Animations get cut short and redraws are wasted. If client state is ever serialized, the closure breaks. | Start one frame timer on mount that advances `flash`/`pop` from state and does nothing when idle. Keep closures out of state. |
-| F12 | Medium | register.tsx:409-423 | `refreshChanged` uses `now > before`. A file restored with an older mtime (`git checkout`, `cp -p`, undo) is never reloaded. Deleted files stat to 0, stay in the tabs, and are never reported. | The pane can show content that no longer matches the file. | Compare with `!==`. Show deleted files as "missing" and offer to remove them. |
-| F13 | Medium | validate output; register.tsx:586, 591 | `prompt.submit` and the global `tool.call` hook have no `.catch`. Validate flags them as "gating hook without .catch". The `tool.call` hook does a lot of work after `next` (the F7 scan). | A throw or budget overrun produces a skipped-hook line, and the file detection is lost. | Use `.catch(($, e, next) => next(e))`, since `next.called` replays the settled result. |
-| F14 | Medium | extract.py:219-246 | (a) In `read_only=True` mode, `max_row`/`max_column` come from the file's `<dimension>` tag, which many generators write wrong or leave out, so a sheet can show only A1. (b) Neither workbook is ever `close()`d. (c) The fallback `ExcelCompiler(filename=path)` loads the whole workbook in normal mode, which is slow for exactly the openpyxl-written files Claude produces (they have no cached values). | Sheets can be empty or truncated, and reloads can hit the 60 s timeout. | Call `ws.reset_dimensions()` and calculate the bounds yourself, or don't use read_only below about 5 MB. Wrap both workbooks in `try/finally: wb.close()`. Cap the pycel work and add a note when it is skipped. |
-| F15 | Medium | extract.py:291; register.tsx:79-81 | `json.dumps` writes `NaN`/`Infinity` (pycel can return these), which `JSON.parse` rejects, giving "Could not open the file: SyntaxError…". `{...parsed, path} as Doc` accepts any shape without validation. | Users see an unhelpful error, and a malformed document can crash render. | Use `json.dumps(doc, allow_nan=False)` after mapping non-finite values to strings. Validate `kind` and the arrays in TS before the cast. |
+| ID | Sev | Where | Problem → why it matters | Fix |
+|---|---|---|---|---|
+| F1 | High | register.tsx:161-171, 181-187, 426-434 | `track`, `show` and `toggleSource` await `loadDoc` (up to 60 s) and then write `doc` without checking `current` again. `current`, `doc` and `view` are written separately. Confirmed: B's tab shows A's content, so comments, glow and toasts go to the wrong file. | Use one atom `{path, doc, view}` written once, and a load token. Drop stale results. |
+| F2 | High | register.tsx:66-110, 167, 186 | The whole parsed document (about 3× the source size) is one `$.state` value, and the limit is 4.19M characters. Files over about 1.5 MB fail with no message. Every render also reads the full document. | Keep the parsed document in a module cache keyed by path+mtime, and only small state in atoms. Or cap the rows and set `note`. |
+| F3 | High | html.ts:23, 110 | `lineAt` slices and splits the whole prefix on every tag, so parsing is O(n²). A medium-sized page hits the hook budget and the hook is dropped. | Build a newline-offset table once and binary-search it. |
+| F4 | High | register.tsx:793-837 | Every render runs `wrapRows` on the whole document, plus the stripe pass, `rows.some` ×3 and `filter`, on every key or scroll. That's more than 0.5 s per key at 6k lines. | Memoize the layout by (path, version, width, raw). Only slice it per render. |
+| F5 | High | register.tsx:612-622, 1119 | `$.prompt.submit` only *queues* the prompt. If Claude is mid-turn, that turn's `turn.complete` clears "sent" comments and toasts "Claude finished" before Claude has seen them. `track` (173-177) clears them on *any* reload. | Give sent comments a batch id. Clear them only on the completion of the turn that the submit started. |
+| F6 | Medium | register.tsx:1111-1123 | `fill` marks comments `sent` even if the user never presses Enter, so the spinner can run forever. `mode:'replace'` also wipes what the user typed. | Keep the comments as drafts until a matching `prompt.submit`. Append when the prompt box isn't empty. |
+| F7 | Medium | register.tsx:591-603, 374-391 | After every Bash call, subagents included, the hook walks cwd (depth 3, 4,000 entries, one `fs.list` per directory) and pushes up to 20 files into the tabs. `slice(-30)` can evict the open file. With cwd=`$HOME`, DFS uses up the budget before reaching the project, and files outside cwd are never seen. | Skip the scan when `agentId` is set. Scan only paths the command names. Never evict `current`. Put found files in a "new" list, not the tabs. |
+| F8 | Medium | register.tsx:355-362, 796-801, 911 | Render writes module-level `drawn`, which scrolling then reads. With terminal and desktop both drawing, the last one wins. `drawn` is empty after a hot reload. | Derive the geometry in `ui.message` from the memoized layout, per `e.surface`. |
+| F9 | Medium | register.tsx:641-706 | `move` computes from `v` and `sel` snapshots taken at the start of the hook. Concurrent posts start from the same `cur`, so key repeat drops moves and the anchor jumps. | Compute inside the `update(view, old => …)` closure. |
+| F10 | Medium | register.tsx:813, 1057; `ReviewComment.from/to` | Drafts store row indices and match on label equality. After any edit they point at different text, which is the core use case. | Re-anchor drafts by `quote` on reload and flag the ones that can't be found. |
+| F11 | Medium | viewer.tsx:165-187; tabs.tsx:221-241 | `surface.every` is started during render on prop changes (the API says: start it once, while `state` is undefined). Overlapping flashes run two timers and the older one cuts the newer short. Tabs stores a closure in client state. | One mount-time frame timer that advances from state. No closures in state. |
+| F12 | Medium | register.tsx:416 | The `now > before` check misses files restored with an older mtime (git checkout, `cp -p`). Deleted files stat to 0 and stay in the tabs for good. | Compare with `!==`. Mark missing files. |
+| F13 | Medium | register.tsx:586, 591 | Validate reports "gating hook without .catch" for `prompt.submit` and the global `tool.call` hook, which does heavy work after `next`. | `.catch(($, e, next) => next(e))`. |
+| F14 | Medium | extract.py:219-246 | `read_only` trusts the file's `<dimension>` tag, which is often wrong or missing, so a sheet can show only A1. Neither workbook is `close()`d. The pycel fallback loads the full workbook, which is slow for exactly the openpyxl-written files Claude makes. | `ws.reset_dimensions()` plus computing the bounds yourself. `try/finally: close()`. Cap the pycel work and add a note when it's skipped. |
+| F15 | Medium | extract.py:291; register.tsx:79-81 | `json.dumps` emits `NaN`, which `JSON.parse` rejects, so the user sees "Could not open the file: SyntaxError". `as Doc` accepts any shape. | Map non-finite values to strings and use `allow_nan=False`. Validate the shape in TS. |
 
-**Low (F16-F24):**
-- **F16 (extract.py:156, 177):** output is cut at 4,000 rows with no `note`. Set one.
-- **F17 (extract.py:27, 286):** `execv` into a broken venv, or a missing argv, produces a raw traceback, and `setup` never repairs a half-made venv. The re-exec code is duplicated in make_examples.py. Fix: catch the error and say "run setup", recreate the venv when pip is missing, and share the venv code in one module.
-- **F18 (html.ts:160):** `html.indexOf('<tr', 0)` makes the `<th>` header check apply to the whole document, so later tables get a false header row. Track `sawTh` per table.
-- **F19 (html.ts:14):** `fromCodePoint` throws on an out-of-range `&#…;`, which turns the whole page into an error. Guard the range.
-- **F20 (format.ts:32):** `_italic_` matches inside snake_case identifiers. Require non-word characters around `_`.
-- **F21 (register.tsx:221):** table and code rows send an unclipped `t`, so a long minified line can push Client props past 100k characters and unmount the viewer. Clip `t` or drop it.
-- **F22 (register.tsx:142, 448):** `changed.rows` has no cap (cells are capped at 2,000), and the theme is read only once. Fix both.
-- **F23 (register.tsx:546, 562, 606):** the `(e.input ?? e)` and `as unknown as` casts exist only for the tests' non-standard `input:` calls. The live spread shape works (I tested it). Narrow on `e.tool` and fix the tests.
-- **F24 (tabs.tsx file-bar mode; register.tsx:885, 1256 `isCurrentShape`):** dead code. Remove it, but keep the intentional props-skew fallbacks.
+**Low:**
+- **F16 (extract.py:156, 177):** output is truncated at 4,000 rows with no `note`.
+- **F17 (extract.py:27, 286):** `execv` into a broken venv, or a missing argv, produces a raw traceback, and `setup` never repairs a half-made venv. The venv code is duplicated in make_examples.py.
+- **F18 (html.ts:160):** `indexOf('<tr', 0)` makes the `<th>` check apply to the whole document, so later tables get false header rows.
+- **F19 (html.ts:14):** `fromCodePoint` throws on an out-of-range entity, which turns the whole page into an error.
+- **F20 (format.ts:32):** `_italic_` matches inside snake_case identifiers.
+- **F21 (register.tsx:221):** table and code rows send an unclipped `t`, so a long minified line can push Client props past 100k characters and unmount the viewer.
+- **F22 (register.tsx:142, 448):** `changed.rows` has no cap, and the theme is read only once per session.
+- **F23 (register.tsx:546, 562, 606):** the `(e.input ?? e)` and `as unknown as` casts exist only for the tests' non-standard `input:` calls. The live spread shape works (I tested it).
+- **F24:** dead code: Tabs' file-bar mode (`dots`, `badge`, `asides`, group `files`) and `isCurrentShape` (register.tsx:885, 1256). Keep the intentional props-skew fallbacks.
 
 ## Test-suite weaknesses
 
-- `dump*.test.tsx` contain no assertions. They only `console.log`, so they pass whatever is drawn.
-- `review.test.tsx:184` asserts `text: /C/` in the spinner, which almost any text matches.
-- Untested: the Write/Edit/MultiEdit detection, auto-open on `turn.complete`, the Bash scan, the 2 s `clock.every` watcher (with `mock.clock` + `advance`), all error paths (exit code ≠ 0, bad JSON, unsupported extension, missing file for `open_file`), large documents (F2-F4), F1-style races, comment re-anchoring after edits, and the light theme.
-- extract.py has no tests. A pytest file with tiny generated docx/xlsx fixtures (formula without cached values, bad dimension tag) would cover F14-F16.
-- old-props tests stub `every: () => () => {}`, so the animation and timer logic is never run.
-- The file-types tests depend on fixed y coordinates (`row 3`, `x:6`), so any layout change breaks them for reasons unrelated to the behaviour under test.
+- `dump*.test.tsx` have no assertions; they only log, so they always pass.
+- `review.test.tsx:184` asserts `/C/` in the spinner, which almost any text matches.
+- Untested: Write/Edit detection, auto-open, the Bash scan, the 2 s watcher (`mock.clock` would cover it), every error path, large documents, races, comment drift after edits, the light theme.
+- extract.py has no tests. Pytest with tiny generated fixtures (formula with no cached value, bad dimension tag) would cover F14-F16.
+- old-props stubs `every`, so the animation code never runs.
+- Click tests depend on fixed coordinates, so layout tweaks break them.
 
 ## Top 5 refactors
 
-1. **Document store outside `$.state`.** Keep a module cache `Map<path, {mtime, doc, layoutByWidth}>`, and keep only small view state (`current`, `docVersion`, `view`) in atoms. This fixes F2, F4 and F8, and makes renders cheap.
-2. **One `open` atom and a load token.** Make every load an `async load(path) → if token still current, commit {path, doc, view, selection}` in one write. This fixes F1 and the `show`/`toggleSource`/`track` duplication.
-3. **Comment lifecycle state machine.** `draft → queued(batchId) → in-progress(turnId) → done`, with drafts re-anchored by quote on reload. This fixes F5, F6 and F10.
-4. **Split `register.tsx` (1,294 lines)** into `load.ts` (loadDoc/diff), `layout.ts` (wrapRows/describe*), `commands.ts`, `watch.ts` (scan/refresh), and `pane.tsx` (render), with pure functions unit-tested directly.
-5. **Better change detection.** Replace the cwd scan with "paths named in the Bash command + the open files" and one shared refresh queue that runs one reload per path at a time. This fixes F7, F12 and F13.
+1. **Document cache outside `$.state`:** `Map<path, {mtime, doc, layoutByWidth}>`, with only small view state in atoms. Fixes F2, F4 and F8.
+2. **One `open` atom plus a load token:** a single `load(path)` that commits `{path, doc, view, selection}` in one write. Fixes F1 and the duplication across show, track and toggleSource.
+3. **Comment state machine:** `draft → queued(batch) → in-progress(turn) → done`, with re-anchoring by quote. Fixes F5, F6 and F10.
+4. **Split register.tsx (1,294 lines)** into load, layout, watch, commands and pane modules, and unit-test the pure functions (`wrapRows`, `describe*`, `diffDocs`, parsers) directly.
+5. **Targeted change detection:** watch the open files plus paths named in the command, through one serialized refresh queue. Fixes F7, F12 and F13.
 
-## What is done well
+## Done well
 
-- The API is mostly used correctly. State writes go through `update()` closures, never during render. Spinner and FileBar start timers correctly. `session.start` registers the tools and commands and awaits them. `.catch` is used where failures don't matter.
-- Client modules keep their props small by drawing only the visible rows and columns, and they tolerate props from older versions, with tests for that.
-- Comments carry exact anchors (line ranges, `Sheet!C3:E5`, ADF JSON paths, `<p> at line N`), and the feedback prompt tells Claude how to edit each format in place. These are thoughtful product decisions.
-- The Python side is careful: the venv is isolated with pinned versions, extraction is read-only, and grids are capped at 500×40.
-- `diffDocs` uses a multiset comparison, so it is O(n), and its output is capped.
-- Tests use the official harness and cover both terminal and desktop surfaces.
+- State is written only through `update()` closures, never during render. The Spinner and FileBar timers are correct. Tools are registered in `session.start` and awaited.
+- Client props carry only the visible rows and columns. Views tolerate props from an older main module, with tests for that.
+- Comment anchors are precise (line ranges, `Sheet!C3:E5`, ADF JSON paths), and the feedback prompt tells Claude how to edit each format in place.
+- Python: an isolated venv with pinned versions, read-only extraction, and capped grids.
+- `diffDocs` uses a multiset comparison, so it is O(n), and its output is capped. Tests cover both the terminal and desktop surfaces.
