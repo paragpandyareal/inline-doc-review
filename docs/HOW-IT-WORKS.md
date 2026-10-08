@@ -104,4 +104,5 @@ Gotchas we hit:
 - **Atom references need literals:** `atom({ plugin: 'review-pane', key: 'files' } as const, …)`.
 - **Client props can't hold `undefined`.** Leave the field out instead, or the pane refuses the tree.
 - **Choose command names with care.** The engine refused `/review` because it clashes with the built-in `/code-review`. That's why the command is `/review-pane`.
+- **The views can run a newer version than the main module.** `viewer.tsx` and `tabs.tsx` are read from disk on each draw, while `register.tsx` reloads only between turns. Mid-update, a new view can get an old main module's props, so every new prop needs a default in the view. `tests/old-props.test.tsx` guards this.
 - **The test kit needs mocks for side effects.** It has no fs, process or clock: answer `fs.read`, `process.run` and the rest in the test, and use `mock.store(on)` and `mock.clock(on)`.

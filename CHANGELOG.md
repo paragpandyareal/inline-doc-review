@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-10-08
+
+- Fix: pressing keys while the mod was mid-update could crash the pane (`props.colors.text`, `pal.selection`). The views are read from disk on each draw, while the main module reloads between turns, so for a moment the two could be on different versions. Both views now fall back to theme colours and safe defaults for anything missing.
+
 ## 0.3.0 — 2026-10-08
 
 First public release.

@@ -117,6 +117,13 @@ export type ViewerPost =
   | { type: 'clear' }
 
 const GAP = 2
+
+/** Theme keys, used when no palette arrives (a main module from before 0.3). */
+const FALLBACK: ViewPal = {
+  text: 'text', subtle: 'subtle', dim: 'inactive', accent: 'claude', formula: 'suggestion', comment: 'warning',
+  selection: '', h2: 'suggestion', h3: 'suggestion', link: 'suggestion', code: 'permission', band: '', zebra: '',
+  flash: '', info: 'suggestion', note: 'permission', warning: 'warning', success: 'success', error: 'error',
+}
 const FLASH_FRAMES = 14
 const POP = ['·', '∘', '○', '◉', '●', '●', '◉', '●']
 
@@ -131,9 +138,26 @@ const cellWidth = (w: number) => 2 + w + 1 + GAP
 /** A comment mark goes on the first visual line of its row only. */
 const isFirstOf = (rows: LineRow[], i: number) => i === 0 || rows[i - 1]?.src !== rows[i]?.src
 
-const Viewer: ClientModule<ViewerProps, Local> = (props, surface) => {
+const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
+  // Fields a main module from an older version does not send get their defaults.
+  const props = (
+    input.mode === 'grid'
+      ? {
+          ...input,
+          rows: input.rows ?? [],
+          letters: input.letters ?? [],
+          widths: input.widths ?? [],
+          moreLeft: input.moreLeft ?? 0,
+          moreRight: input.moreRight ?? 0,
+          moreBelow: input.moreBelow ?? 0,
+          scroll: input.scroll ?? { top: 0, shown: 0, total: 0 },
+          isZebra: input.isZebra ?? false,
+        }
+      : { ...input, rows: input.rows ?? [], width: input.width ?? 60 }
+  ) as ViewerProps
   const { Box, Text } = surface.elements
-  const pal = props.pal
+  // A main module from an older version may not send colours: fall back to the theme's own.
+  const pal: ViewPal = { ...FALLBACK, ...(props.pal ?? {}) }
   const local = surface.state ?? {}
   const drag = local.drag
 

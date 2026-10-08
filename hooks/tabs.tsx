@@ -26,7 +26,14 @@ type Local = { shownActive: number; slideFrom?: number; frame?: number; stop?: (
 const GAP = 3
 const SLIDE_FRAMES = 6
 
-const Tabs: ClientModule<TabsProps, Local> = (props, surface) => {
+const Tabs: ClientModule<TabsProps, Local> = (input, surface) => {
+  // A main module from an older version may not send colours: fall back to the theme's own.
+  const given: Partial<TabsProps['colors']> = input.colors ?? {}
+  const props: TabsProps = {
+    ...input,
+    labels: input.labels ?? [],
+    colors: { accent: given.accent ?? 'claude', text: given.text ?? 'text', subtle: given.subtle ?? 'subtle', dim: given.dim ?? 'inactive' },
+  }
   const { Box, Text } = surface.elements
   const badgeWidth = props.badge ? props.badge.label.length + 2 + 2 : 0
   const starts: number[] = []
