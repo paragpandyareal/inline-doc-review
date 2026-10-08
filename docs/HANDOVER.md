@@ -1,6 +1,6 @@
 # Inline Doc Review: project handover
 
-Read this first when picking the project up in a new Claude Code session. It covers what exists, where it lives, how it got here and why, and what's next.
+Read this first when picking the project up in a new Claude Code session. **Work in progress: an independent review and fix round. See [REVIEW-PLAN.md](REVIEW-PLAN.md) and continue from there.** It covers what exists, where it lives, how it got here and why, and what's next.
 
 _Last updated: 2026-10-08, at version 0.4.0._
 
