@@ -58,7 +58,7 @@ export function tableRows(
 ): DocRow[] {
   const columns = Math.max(0, ...cells.map(row => row.length))
   const widths = Array.from({ length: columns }, (_, c) =>
-    Math.min(28, Math.max(1, ...cells.map(row => plain(row[c] ?? []).length))),
+    Math.min(36, Math.max(1, ...cells.map(row => plain(row[c] ?? []).length))),
   )
   return cells.map((row, r) => {
     const spans: Span[] = []
