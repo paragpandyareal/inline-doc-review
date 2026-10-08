@@ -20,7 +20,7 @@ _Started 2026-10-08. If you are a new Claude Code session picking this up, read 
 | Information security and hack-proofing | running | `docs/reviews/security.md` |
 | QA (exploratory, new tests) | running | `docs/reviews/qa.md` |
 | Code quality | running | `docs/reviews/code-quality.md` |
-| Transparency and docs | running | `docs/reviews/transparency.md` |
+| Transparency and docs | **done** | `docs/reviews/transparency.md` |
 | Simplification and bloat | running | `docs/reviews/simplification.md` |
 
 When a review finishes, its report is saved to the file above and this table is updated. **If a report file is missing after a reset, that review did not finish: run it again** with the brief below.
