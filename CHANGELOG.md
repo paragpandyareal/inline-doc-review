@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 — 2026-10-08
+
+- New `open_files` tool: Claude can open several files as tabs at once, in order. `replace: true` starts the pane fresh, with only those tabs and no old comments (for a clean review or a demo).
+- Up to 8 file tabs show in the top bar (was 6).
+
 ## 0.3.1 — 2026-10-08
 
 - Fix: pressing keys while the mod was mid-update could crash the pane (`props.colors.text`, `pal.selection`). The views are read from disk on each draw, while the main module reloads between turns, so for a moment the two could be on different versions. Both views now fall back to theme colours and safe defaults for anything missing.

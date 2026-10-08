@@ -429,6 +429,21 @@ export const register: Register = on => {
       },
       isDeferred: false,
     })
+    await $.tool.register({
+      name: 'open_files',
+      description:
+        "Open several files in the user's review pane at once, as tabs in the order given; the first is shown. " +
+        'With replace: true the pane starts fresh: these become the only tabs and earlier comments are cleared (use for a clean review or a demo).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          paths: { type: 'array', items: { type: 'string' }, description: 'The files to open, in tab order' },
+          replace: { type: 'boolean', description: 'Make these the only tabs and clear earlier comments' },
+        },
+        required: ['paths'],
+      },
+      isDeferred: false,
+    })
     return started
   })
 
@@ -479,6 +494,33 @@ export const register: Register = on => {
     return {
       result: { opened: true, path },
       text: opened.isPlaced ? `Opened ${path} in the review pane.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /review-pane).`,
+    }
+  })
+
+  on('tool.call', { tool: 'mcp__review-pane__open_files' }, async ($, e) => {
+    const input = e.input as { paths?: unknown; replace?: unknown }
+    const asked = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string').map(resolvePath) : []
+    const usable: string[] = []
+    const skipped: string[] = []
+    for (const path of asked) {
+      if (isSupported(path) && (await $.fs.exists(path))) usable.push(path)
+      else skipped.push(path)
+    }
+    const first = usable[0]
+    if (!first) return { result: { opened: [] }, text: `None of those files can be opened: ${skipped.join(', ') || '(no paths given)'}.`, isError: true }
+    if (input.replace === true) {
+      await update($, files, () => usable)
+      await update($, comments, () => [])
+      await update($, changed, () => null)
+      await update($, view, () => ({ top: 0, left: 0, sheet: 0 }))
+    } else {
+      await update($, files, list => [...list, ...usable.filter(p => !list.includes(p))].slice(-30))
+    }
+    await show($, first)
+    const opened = await openPane($)
+    return {
+      result: { opened: usable, skipped },
+      text: `Opened ${usable.length} file${usable.length === 1 ? '' : 's'} in the review pane${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /review-pane)'}.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}`,
     }
   })
 
@@ -624,7 +666,7 @@ export const register: Register = on => {
     const newest = drafts[drafts.length - 1]
 
     // ── Top bar: file-type badge, file tabs, switches ──
-    const labels = list.slice(0, 6).map(baseName)
+    const labels = list.slice(0, 8).map(baseName)
     const activeFile = Math.max(0, list.indexOf(path ?? ''))
     const asides: NonNullable<TabsProps['asides']> = []
     if (d?.kind === 'lines' && d.hasSource) asides.push({ id: 'source', label: v.raw ? '◧ Formatted' : '‹› Source', color: pal.subtle })

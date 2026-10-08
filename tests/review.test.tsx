@@ -211,3 +211,19 @@ test('opening files keeps the tab order, so → walks through them all', async (
     expect(await ui.find({ type: 'Text', text: new RegExp(`/w/${expected.replace('.', '\\.')}`), in: 'viewer' })).toBeDefined()
   }
 })
+
+test('open_files with replace makes exactly those tabs, in order, and clears old comments', async ($, on) => {
+  mock.store(on)
+  on('fs.exists', () => ({ value: true }))
+  on('fs.read', () => ({ value: '# Hello' }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await $.command.run({ command: 'review-pane', args: '/w/old.md' })
+  const ran = await $.tool.call({ tool: 'mcp__review-pane__open_files', input: { paths: ['/w/one.md', '/w/two.md', '/w/nope.exe'], replace: true } })
+  expect(ran.text).toContain('Opened 2 files')
+  expect(ran.text).toContain('Skipped: /w/nope.exe')
+  const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  const tabs = JSON.stringify(await ui.drawn({ in: 'file-tabs' }))
+  expect(tabs).toContain('one.md')
+  expect(tabs).toContain('two.md')
+  expect(tabs).not.toContain('old.md')
+})
