@@ -34,7 +34,7 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/palette.ts` | hooks environment | Colours: a slate-and-blue scheme (GitHub-style dark/light) chosen by the `/config` theme, theme keys under ANSI and colour-blind themes, and file-type badges |
 | `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. Runs itself under `~/.cache/review-pane/venv` once `/review-pane setup` has created it. Uses `pycel` to calculate formulas that have no saved result (files written by openpyxl never have one). |
 | `types/index.d.ts` | — | The state contract. Every `$.state` value and its type, declared under `PluginState['review-pane']`. |
-| `tests/*.test.tsx` | `claude plugin test` | 19 tests: every file type opened and commented on, the comment flow, keys, motion, tab order. `dump*.test.tsx` print what the pane draws, which is useful when changing the layout. |
+| `tests/*.test.tsx` | `claude plugin test` | 23 tests: every file type opened and commented on, the comment flow, keys, motion, tab order. `dump*.test.tsx` print what the pane draws, which is useful when changing the layout. |
 
 ## The document model
 
@@ -95,7 +95,7 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 claude --plugin-dir /path/to/review-pane
 
 claude plugin validate .      # what the engine will load, and what it would refuse
-claude plugin test .          # the 19 tests
+claude plugin test .          # the 23 tests
 ```
 
 To type-check, Claude Code writes its API types to `.claude-plugin/types/` once it has loaded the mod. Then run `tsc -p .`.
