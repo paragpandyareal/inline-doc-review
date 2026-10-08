@@ -12,9 +12,9 @@ import type { FileBarProps } from './filebar'
 import type { TabsPost, TabsProps } from './tabs'
 import type { GridRow, LineRow, ViewerPost, ViewerProps, ViewPal } from './viewer'
 
-const PLUGIN = 'review-pane'
+const PLUGIN = 'inline-doc-review'
 const PANE = 'review'
-const TITLE = 'Review'
+const TITLE = 'Inline Review'
 const TOOL = 'open_file'
 
 /** Files the pane can show, by extension. */
@@ -24,20 +24,20 @@ const IMAGE_KINDS = ['png']
 /** What auto-open considers a finished output worth opening. */
 const AUTO_KINDS = ['docx', 'pdf', 'png', 'html', 'htm', 'md', 'markdown', 'adf']
 const AUTO_MAX_FILES = 5
-/** Sample files shipped as text; /review-pane examples copies them out. */
+/** Sample files shipped as text; /inline-review examples copies them out. */
 const EXAMPLE_TEXTS = ['launch-plan.md', 'project-update.adf', 'pricing-page.html', 'meter-readings.csv']
 /** Comments listed under the document before the rest are counted. */
 const MAX_LISTED = 12
 const SCAN_SKIP = new Set(['node_modules', '.git', '.venv', 'venv', 'dist', 'build', '__pycache__', '.next', '.cache'])
 
-const files = atom({ plugin: 'review-pane', key: 'files' } as const, [])
-const current = atom({ plugin: 'review-pane', key: 'current' } as const, null)
-const doc = atom({ plugin: 'review-pane', key: 'doc' } as const, null)
-const view = atom({ plugin: 'review-pane', key: 'view' } as const, { top: 0, left: 0, sheet: 0 })
-const selection = atom({ plugin: 'review-pane', key: 'selection' } as const, null)
-const comments = atom({ plugin: 'review-pane', key: 'comments' } as const, [])
-const autoOpen = atom({ plugin: 'review-pane', key: 'autoOpen' } as const, false)
-const changed = atom({ plugin: 'review-pane', key: 'changed' } as const, null)
+const files = atom({ plugin: 'inline-doc-review', key: 'files' } as const, [])
+const current = atom({ plugin: 'inline-doc-review', key: 'current' } as const, null)
+const doc = atom({ plugin: 'inline-doc-review', key: 'doc' } as const, null)
+const view = atom({ plugin: 'inline-doc-review', key: 'view' } as const, { top: 0, left: 0, sheet: 0 })
+const selection = atom({ plugin: 'inline-doc-review', key: 'selection' } as const, null)
+const comments = atom({ plugin: 'inline-doc-review', key: 'comments' } as const, [])
+const autoOpen = atom({ plugin: 'inline-doc-review', key: 'autoOpen' } as const, false)
+const changed = atom({ plugin: 'inline-doc-review', key: 'changed' } as const, null)
 
 const extOf = (path: string) => (path.match(/\.([^./]+)$/)?.[1] ?? '').toLowerCase()
 const isSupported = (path: string) => [...TEXT_KINDS, ...DOC_KINDS, ...IMAGE_KINDS].includes(extOf(path))
@@ -339,7 +339,7 @@ function feedbackPrompt(list: ReviewComment[]): string {
     return `${i + 1}. \`${c.path}\`, ${c.label}${quote}\n   Feedback: ${c.text}`
   })
   return [
-    'Review feedback from the review pane. Apply each item by editing the file directly.',
+    'Review feedback from the inline review pane. Apply each item by editing the file directly.',
     'The quoted text shows exactly which part each comment is about. Keep the file\'s existing formatting:',
     'for .docx and .xlsx edit with python-docx / openpyxl rather than rebuilding the file; for a .pdf, edit',
     'whatever it was generated from and regenerate it; for a .png, regenerate it. For an ADF (Confluence) file,',
@@ -453,8 +453,8 @@ export const register: Register = on => {
     const stored = await $.store.get('autoOpen')
     await update($, autoOpen, () => stored === true)
     await $.command.register({
-      name: 'review-pane',
-      description: 'Open the review pane, or a file in it: /review-pane [file] · /review-pane examples · /review-pane auto on|off · /review-pane setup',
+      name: 'inline-review',
+      description: 'Open the inline review pane, or a file in it: /inline-review [file] · /inline-review examples · /inline-review auto on|off · /inline-review setup',
       argumentHint: '[file | examples | auto on|off | setup]',
     })
     await $.tool.register({
@@ -487,7 +487,7 @@ export const register: Register = on => {
     return started
   })
 
-  on('command.run', { command: 'review-pane' }, async ($, e) => {
+  on('command.run', { command: 'inline-review' }, async ($, e) => {
     const args = e.args.trim()
     if (args === 'auto on' || args === 'auto off') {
       const isOn = args === 'auto on'
@@ -495,16 +495,16 @@ export const register: Register = on => {
       await $.store.set('autoOpen', isOn)
       return {
         text: isOn
-          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML or Markdown files, the review pane opens on them.`
-          : 'Auto-open is off. New files are listed in the pane; open it with /review-pane.',
+          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML or Markdown files, the inline review pane opens on them.`
+          : 'Auto-open is off. New files are listed in the pane; open it with /inline-review.',
       }
     }
     if (args === 'auto') {
-      return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /review-pane auto on|off.` }
+      return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /inline-review auto on|off.` }
     }
     if (args === 'examples' || args.startsWith('examples ')) {
       // Text samples ship with the plugin; the Excel and Word ones are generated, so the plugin holds no binaries.
-      const folder = resolvePath(args.slice('examples'.length).trim() || 'review-pane-examples')
+      const folder = resolvePath(args.slice('examples'.length).trim() || 'inline-doc-review-examples')
       const written: string[] = []
       for (const name of EXAMPLE_TEXTS) {
         const text = await $.fs.read(`${$.plugin.root}/examples/${name}`)
@@ -519,14 +519,14 @@ export const register: Register = on => {
       await openPane($)
       return {
         text:
-          `Wrote ${written.length} sample files to ${folder} and opened them in the review pane.` +
-          (ran.exitCode === 0 ? '' : ' The Excel and Word samples need /review-pane setup first.'),
+          `Wrote ${written.length} sample files to ${folder} and opened them in the inline review pane.` +
+          (ran.exitCode === 0 ? '' : ' The Excel and Word samples need /inline-review setup first.'),
       }
     }
     if (args === 'setup') {
       const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/extract.py`, 'setup'], { timeoutMs: 600_000 })
       return ran.exitCode === 0
-        ? { text: 'Installed python-docx, openpyxl, pypdf and pycel in ~/.cache/review-pane/venv. Word, Excel and PDF files can be shown now.' }
+        ? { text: 'Installed python-docx, openpyxl, pypdf and pycel in ~/.cache/inline-doc-review/venv. Word, Excel and PDF files can be shown now.' }
         : { text: `Setup failed:\n${ran.stderr.trim().slice(-1500)}`, exitCode: 1 }
     }
     if (args) {
@@ -541,7 +541,7 @@ export const register: Register = on => {
     return { text: opened.isPlaced ? 'Review pane opened.' : 'Review pane is waiting for room: widen the terminal.' }
   })
 
-  on('tool.call', { tool: 'mcp__review-pane__open_file' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__inline-doc-review__open_file' }, async ($, e) => {
     // A live session puts the arguments on the event; the test kit under `input`.
     const input = ((e as { input?: unknown }).input ?? e) as { path?: unknown }
     const path = typeof input.path === 'string' ? resolvePath(input.path) : ''
@@ -553,12 +553,12 @@ export const register: Register = on => {
     }
     await show($, path)
     const opened = await openPane($)
-    const text = opened.isPlaced ? `Opened ${path} in the review pane.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /review-pane).`
+    const text = opened.isPlaced ? `Opened ${path} in the inline review pane.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /inline-review).`
     // A live session takes a tool's result as text.
     return { result: text, text }
   })
 
-  on('tool.call', { tool: 'mcp__review-pane__open_files' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__inline-doc-review__open_files' }, async ($, e) => {
     const input = ((e as { input?: unknown }).input ?? e) as { paths?: unknown; replace?: unknown }
     const asked = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string').map(resolvePath) : []
     const usable: string[] = []
@@ -579,7 +579,7 @@ export const register: Register = on => {
     }
     await show($, first)
     const opened = await openPane($)
-    const text = `Opened ${usable.length} file${usable.length === 1 ? '' : 's'} in the review pane${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /review-pane)'}.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}`
+    const text = `Opened ${usable.length} file${usable.length === 1 ? '' : 's'} in the inline review pane${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /inline-review)'}.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}`
     return { result: text, text }
   })
 
@@ -627,9 +627,9 @@ export const register: Register = on => {
     if ((await read($, autoOpen)) && outputs.length >= 1 && outputs.length <= AUTO_MAX_FILES && outputs[0]) {
       await show($, outputs[0])
       const opened = await openPane($)
-      if (!opened.isPlaced) $.ui.toast(`Review: ${baseName(outputs[0])} is ready. Run /review-pane to see it (the terminal is too narrow to open it by itself).`)
+      if (!opened.isPlaced) $.ui.toast(`Review: ${baseName(outputs[0])} is ready. Run /inline-review to see it (the terminal is too narrow to open it by itself).`)
     } else {
-      $.ui.status(`review: ${made.length} file${made.length === 1 ? '' : 's'} updated · /review-pane to open`)
+      $.ui.status(`review: ${made.length} file${made.length === 1 ? '' : 's'} updated · /inline-review to open`)
     }
     return done
   })
@@ -765,7 +765,7 @@ export const register: Register = on => {
       body = (
         <Box flexDirection="column" paddingY={1}>
           <Text bold color={pal.accent}>✦ Nothing to review yet</Text>
-          <Text color={pal.subtle}>Files Claude creates will open here. You can also run /review-pane and a file path,</Text>
+          <Text color={pal.subtle}>Files Claude creates will open here. You can also run /inline-review and a file path,</Text>
           <Text color={pal.subtle}>or ask Claude to "open" a file.</Text>
         </Box>
       )
@@ -884,7 +884,7 @@ export const register: Register = on => {
       if (d.note) bar = <Text color={pal.warning}>{d.note}</Text>
     } else if (d?.kind === 'grid' && !isCurrentShape(d)) {
       bar = <Text color={pal.warning}>This file was opened by an older version of the pane.</Text>
-      body = <Text color={pal.subtle}>Press ⟳ Reload above, or run /review-pane again.</Text>
+      body = <Text color={pal.subtle}>Press ⟳ Reload above, or run /inline-review again.</Text>
     } else if (d?.kind === 'grid') {
       const sheetIndex = clamp(v.sheet, 0, d.sheets.length - 1)
       const sheet = d.sheets[sheetIndex]

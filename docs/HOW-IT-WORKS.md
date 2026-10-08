@@ -1,6 +1,6 @@
-# How Review Pane works
+# How Inline Doc Review works
 
-Review Pane is a Claude Code **mod**: a plugin made of *function hooks* (TypeScript that runs inside Claude Code) rather than shell-command hooks. It draws a pane, listens to what Claude does, and hands your comments back to Claude as a prompt.
+Inline Doc Review is a Claude Code **mod**: a plugin made of *function hooks* (TypeScript that runs inside Claude Code) rather than shell-command hooks. It draws a pane, listens to what Claude does, and hands your comments back to Claude as a prompt.
 
 ## The loop
 
@@ -32,8 +32,8 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/md.ts`, `html.ts`, `adf.ts` | hooks environment | Read Markdown, HTML and ADF into formatted rows (`DocRow`) |
 | `hooks/format.ts` | hooks environment | Shared helpers: inline Markdown, table layout, span tidying |
 | `hooks/palette.ts` | hooks environment | Colours: a slate-and-blue scheme (GitHub-style dark/light) chosen by the `/config` theme, theme keys under ANSI and colour-blind themes, and file-type badges |
-| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. Runs itself under `~/.cache/review-pane/venv` once `/review-pane setup` has created it. Uses `pycel` to calculate formulas that have no saved result (files written by openpyxl never have one). |
-| `types/index.d.ts` | — | The state contract. Every `$.state` value and its type, declared under `PluginState['review-pane']`. |
+| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. Runs itself under `~/.cache/inline-doc-review/venv` once `/inline-review setup` has created it. Uses `pycel` to calculate formulas that have no saved result (files written by openpyxl never have one). |
+| `types/index.d.ts` | — | The state contract. Every `$.state` value and its type, declared under `PluginState['inline-doc-review']`. |
 | `tests/*.test.tsx` | `claude plugin test` | 23 tests: every file type opened and commented on, the comment flow, keys, motion, tab order. `dump*.test.tsx` print what the pane draws, which is useful when changing the layout. |
 
 ## The document model
@@ -67,7 +67,7 @@ Everything the drawing reads lives in `$.state` (declared in `types/index.d.ts`)
 
 | Hook | Why |
 |---|---|
-| `session.start` | Registers `/review-pane` and the `open_file` tool. Reads the theme and the auto-open setting. Rereads the open file, since the format may have changed across versions. |
+| `session.start` | Registers `/inline-review` and the `open_file` tool. Reads the theme and the auto-open setting. Rereads the open file, since the format may have changed across versions. |
 | `tool.call` (Write, Edit, MultiEdit, NotebookEdit) | Notes files Claude wrote |
 | timer (every 2 s) + `tool.call` (Bash) | Checks each open file's modification time and rereads any that changed, however they changed. Then scans the working folder (3 levels deep, skipping `node_modules`, `.git` and the like) for supported files changed during the command, which catches files Python scripts make |
 | `prompt.submit` / `turn.complete` | Collects the files made in a turn; at the end of a turn, clears sent comments still shown as in progress. If auto-open is on and the turn made 1–5 documents, opens the pane on them. |
@@ -92,7 +92,7 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 
 ```bash
 # Load your working copy in a session (hot-reloads as you save)
-claude --plugin-dir /path/to/review-pane
+claude --plugin-dir /path/to/inline-doc-review
 
 claude plugin validate .      # what the engine will load, and what it would refuse
 claude plugin test .          # the 23 tests
@@ -102,8 +102,8 @@ To type-check, Claude Code writes its API types to `.claude-plugin/types/` once 
 
 Gotchas we hit:
 - **Helpers must be declared at the top of a file.** Any function a hook passes `$` to has to be declared at the top level of the module, or the validator refuses it.
-- **Atom references need literals:** `atom({ plugin: 'review-pane', key: 'files' } as const, …)`.
+- **Atom references need literals:** `atom({ plugin: 'inline-doc-review', key: 'files' } as const, …)`.
 - **Client props can't hold `undefined`.** Leave the field out instead, or the pane refuses the tree.
-- **Choose command names with care.** The engine refused `/review` because it clashes with the built-in `/code-review`. That's why the command is `/review-pane`.
+- **Choose command names with care.** The engine refused `/review` because it clashes with the built-in `/code-review`. That's why the command is `/inline-review`.
 - **The views can run a newer version than the main module.** `viewer.tsx` and `tabs.tsx` are read from disk on each draw, while `register.tsx` reloads only between turns. Mid-update, a new view can get an old main module's props, so every new prop needs a default in the view. `tests/old-props.test.tsx` guards this.
 - **The test kit needs mocks for side effects.** It has no fs, process or clock: answer `fs.read`, `process.run` and the rest in the test, and use `mock.store(on)` and `mock.clock(on)`.

@@ -1,8 +1,8 @@
-# Review Pane for Claude Code
+# Inline Doc Review for Claude Code
 
 **Review what Claude makes without leaving Claude Code.**
 
-When Claude produces a spreadsheet, a Word document, a PDF, a Confluence page, a Markdown report or a web page, Review Pane opens it in a side pane. You read it formatted as it should look, highlight the part you want changed, write a comment, and send your comments to Claude. Claude edits the real file. The pane shows the result, and the cells or paragraphs that changed glow green for a moment.
+When Claude produces a spreadsheet, a Word document, a PDF, a Confluence page, a Markdown report or a web page, Inline Doc Review opens it in a side pane. You read it formatted as it should look, highlight the part you want changed, write a comment, and send your comments to Claude. Claude edits the real file. The pane shows the result, and the cells or paragraphs that changed glow green for a moment.
 
 There's no hunting for the file in a folder and no switching apps. You don't need to know how to edit an `.xlsx` or ADF file either.
 
@@ -49,16 +49,16 @@ Markdown, HTML and Confluence files have a **‹› Source** switch for when you
 In Claude Code (terminal), type:
 
 ```
-/plugin install review-pane --marketplace paragpandyareal/review-pane
+/plugin install inline-doc-review --marketplace paragpandyareal/inline-doc-review
 ```
 
 Answer `y` to add the marketplace and pick a scope. Then, once, run:
 
 ```
-/review-pane setup
+/inline-review setup
 ```
 
-This installs the small Python libraries the pane uses to read Word, Excel and PDF files (`python-docx`, `openpyxl`, `pypdf`, `pycel`). They go into their own folder, `~/.cache/review-pane/venv`, and nothing touches your system Python. Markdown, Confluence, HTML, text and PNG files need nothing extra.
+This installs the small Python libraries the pane uses to read Word, Excel and PDF files (`python-docx`, `openpyxl`, `pypdf`, `pycel`). They go into their own folder, `~/.cache/inline-doc-review/venv`, and nothing touches your system Python. Markdown, Confluence, HTML, text and PNG files need nothing extra.
 
 **Requirements:** Claude Code with mod (function-hook plugin) support, and Python 3.9 or later. A terminal that supports images (kitty, Ghostty) is only needed to see PNGs.
 
@@ -66,9 +66,9 @@ This installs the small Python libraries the pane uses to read Word, Excel and P
 
 | To… | Do this |
 |---|---|
-| Open a file | `/review-pane path/to/file.xlsx`, or ask Claude "open the budget". Claude has an `open_file` tool. |
-| Open the pane | `/review-pane` |
-| Have files open by themselves | Click **○ Auto-open** at the top right, or run `/review-pane auto on`. When Claude finishes a turn that produced 1–5 Word, PDF, PNG, HTML, Markdown or Confluence files, the pane opens on them. It's off until you turn it on. |
+| Open a file | `/inline-review path/to/file.xlsx`, or ask Claude "open the budget". Claude has an `open_file` tool. |
+| Open the pane | `/inline-review` |
+| Have files open by themselves | Click **○ Auto-open** at the top right, or run `/inline-review auto on`. When Claude finishes a turn that produced 1–5 Word, PDF, PNG, HTML, Markdown or Confluence files, the pane opens on them. It's off until you turn it on. |
 | Comment | Click or drag over cells, lines or paragraphs. Type in **Comment on…** and press Enter. Repeat for as many places as you like. |
 | Review or change a comment | Click it in the list. It jumps to the spot and the box edits it. Clear the text and press Enter, or click ✕, to delete it. |
 | Send | **➤ Send N comments to Claude** sends them now. **Edit before sending** puts them in your prompt box first. |
@@ -82,7 +82,7 @@ This installs the small Python libraries the pane uses to read Word, Excel and P
 One message, with every comment tied to its exact place:
 
 ```
-Review feedback from the review pane. Apply each item by editing the file directly. …
+Review feedback from the inline review pane. Apply each item by editing the file directly. …
 
 1. `/home/you/pilot-budget.xlsx`, Budget!C3
    > C3: 4,800
@@ -100,22 +100,22 @@ The message also tells Claude how to edit each format safely:
 
 ## What it runs and accesses
 
-Review Pane is open about everything it does on your machine:
+Inline Doc Review is open about everything it does on your machine:
 
 - **Reads files** you open, and files Claude writes or edits in the session's working folder. After each command Claude runs, it also lists that folder (three levels deep, skipping `node_modules`, `.git` and similar) to notice new or changed documents.
 - **Runs a local Python helper** (`scripts/extract.py`) with `python3` to read Word, Excel and PDF files. It runs inside its own virtual environment and does nothing else.
-- **Downloads Python packages only when you ask:** `/review-pane setup` creates `~/.cache/review-pane/venv` and installs exact, pinned versions from PyPI: `python-docx==1.2.0`, `openpyxl==3.1.5`, `pypdf==6.19.0` and `pycel==1.0b30`, plus their dependencies.
-- **Writes files only when you ask:** `/review-pane examples` writes sample files into the folder you name, `./review-pane-examples` by default. The pane itself never edits your documents.
+- **Downloads Python packages only when you ask:** `/inline-review setup` creates `~/.cache/inline-doc-review/venv` and installs exact, pinned versions from PyPI: `python-docx==1.2.0`, `openpyxl==3.1.5`, `pypdf==6.19.0` and `pycel==1.0b30`, plus their dependencies.
+- **Writes files only when you ask:** `/inline-review examples` writes sample files into the folder you name, `./inline-doc-review-examples` by default. The pane itself never edits your documents.
 - **Sends nothing over the network.** Your comments go to Claude only when you press Send or Edit before sending, as a normal prompt in your session.
 - **Remembers one setting:** whether auto-open is on, in Claude Code's plugin store.
 
 ## Try it
 
 ```
-/review-pane examples
+/inline-review examples
 ```
 
-This writes a sample of each type into `./review-pane-examples` and opens them all. The Excel and Word samples are generated on your machine, which needs `/review-pane setup` first. They include `site-consumption.xlsx`, a 60-row × 18-column sheet for trying the big-sheet indicators. The Markdown, Confluence, HTML, CSV and PNG samples are in [`examples/`](examples/).
+This writes a sample of each type into `./inline-doc-review-examples` and opens them all. The Excel and Word samples are generated on your machine, which needs `/inline-review setup` first. They include `site-consumption.xlsx`, a 60-row × 18-column sheet for trying the big-sheet indicators. The Markdown, Confluence, HTML, CSV and PNG samples are in [`examples/`](examples/).
 
 ## Learn more
 

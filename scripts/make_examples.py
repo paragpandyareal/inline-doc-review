@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Writes the sample Excel and Word files for /review-pane examples.
+"""Writes the sample Excel and Word files for /inline-review examples.
 
     make_examples.py <folder>
 
 The samples are generated rather than shipped, so the plugin itself holds
-only text files. Runs under the review-pane venv (/review-pane setup), which
+only text files. Runs under the inline-doc-review venv (/inline-review setup), which
 has openpyxl and python-docx. Prints the files it wrote, one per line.
 """
 import os
 import random
 import sys
 
-VENV_PY = os.path.join(os.path.expanduser("~"), ".cache", "review-pane", "venv", "bin", "python")
+VENV = os.path.join(os.path.expanduser("~"), ".cache", "inline-doc-review", "venv")
+VENV_PY = os.path.join(VENV, "bin", "python")
 
 
 def reexec_in_venv():
-    if os.path.exists(VENV_PY) and os.path.realpath(sys.executable) != os.path.realpath(VENV_PY):
+    # Compare the environment, not the interpreter: a venv's python links to the system one.
+    if os.path.exists(VENV_PY) and os.path.realpath(sys.prefix) != os.path.realpath(VENV):
         os.execv(VENV_PY, [VENV_PY, *sys.argv])
 
 

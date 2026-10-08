@@ -1,13 +1,13 @@
 {
-  "name": "review-pane",
+  "name": "inline-doc-review",
   "owner": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
   "metadata": { "description": "Review pane for Claude Code: comment on the files Claude makes, and Claude applies the feedback." },
   "plugins": [
     {
-      "name": "review-pane",
+      "name": "inline-doc-review",
       "source": "./",
       "description": "Open Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files in a pane, highlight a part, comment, and send the feedback to Claude.",
-      "version": "0.4.1"
+      "version": "0.5.0"
     }
   ]
 }

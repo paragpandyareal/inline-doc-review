@@ -29,13 +29,13 @@ for (const [name, row, label, quote] of CASES) {
       filled = e.text
       return { isFilled: true }
     })
-    await $.command.run({ command: 'review-pane', args: `/w/${name}` })
+    await $.command.run({ command: 'inline-review', args: `/w/${name}` })
     for (const surface of ['terminal', 'desktop'] as const) {
-      const ui = await $.ui.mount({ plugin: 'review-pane', surface, ...PANE })
+      const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface, ...PANE })
       expect(await ui.drawn({ in: 'viewer' })).toBeDefined()
       await ui.unmount()
     }
-    const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+    const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
     await ui.pointer({ type: 'down', x: 6, y: row, button: 'left', in: 'viewer' })
     await ui.pointer({ type: 'up', x: 6, y: row, button: 'left', in: 'viewer' })
     await ui.input({ key: 'comment-0', text: 'Please reword this' })
@@ -57,8 +57,8 @@ test('pricing-page.png: shows the picture, and a comment applies to the whole im
     filled = e.text
     return { isFilled: true }
   })
-  await $.command.run({ command: 'review-pane', args: '/w/pricing-page.png' })
-  const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'inline-review', args: '/w/pricing-page.png' })
+  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Image', key: 'png' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /800 × 560 px/ })).toBeDefined()
   await ui.input({ key: 'comment-0', text: 'Make the button bigger' })
@@ -72,8 +72,8 @@ test('Markdown, HTML and ADF switch to their source and back', async ($, on) => 
   on('fs.exists', () => ({ value: true }))
   on('fs.read', () => ({ value: TEXTS['launch-plan.md'] ?? '' }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
-  await $.command.run({ command: 'review-pane', args: '/w/launch-plan.md' })
-  const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'inline-review', args: '/w/launch-plan.md' })
+  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /## Audience/, in: 'viewer' })).toBeUndefined()
   await ui.post({ type: 'aside', id: 'source' }, { in: 'file-tabs' })
   expect(await ui.find({ type: 'Text', text: /## Audience/, in: 'viewer' })).toBeDefined()

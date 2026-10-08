@@ -100,7 +100,7 @@ export type View = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'review-pane': {
+    'inline-doc-review': {
       files: string[]
       current: string | null
       doc: Doc | null

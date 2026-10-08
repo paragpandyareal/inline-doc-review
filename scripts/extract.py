@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Reads a document for the review pane and prints it as JSON.
+"""Reads a document for the inline review pane and prints it as JSON.
 
     extract.py docx|pdf|xlsx <path>   one document, read only
     extract.py setup                   makes the venv the pane reads with
 
-The libraries live in a venv of their own (~/.cache/review-pane/venv), so
+The libraries live in a venv of their own (~/.cache/inline-doc-review/venv), so
 nothing is installed into the system Python. Each run re-executes itself
 under that venv when it exists.
 """
@@ -14,7 +14,7 @@ import re
 import subprocess
 import sys
 
-VENV = os.path.join(os.path.expanduser("~"), ".cache", "review-pane", "venv")
+VENV = os.path.join(os.path.expanduser("~"), ".cache", "inline-doc-review", "venv")
 VENV_PY = os.path.join(VENV, "bin", "python")
 # Exact versions, so every install gets the same, reviewed code.
 PACKAGES = ["python-docx==1.2.0", "openpyxl==3.1.5", "pypdf==6.19.0", "pycel==1.0b30"]
@@ -39,7 +39,7 @@ def setup():
 def missing(package):
     return {
         "kind": "error",
-        "message": f"Reading this file needs the Python package '{package}'. Run /review-pane setup once to install it.",
+        "message": f"Reading this file needs the Python package '{package}'. Run /inline-review setup once to install it.",
     }
 
 
@@ -230,7 +230,7 @@ def xlsx_sheets(path):
                 compiler = ExcelCompiler(filename=path)
             except Exception:
                 compiler = False
-                note = "Formula results could not be calculated here; run /review-pane setup."
+                note = "Formula results could not be calculated here; run /inline-review setup."
         if compiler is False:
             return None
         try:

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — 2026-10-08
+
+**Renamed: Review Pane is now Inline Doc Review.**
+
+- Plugin name `inline-doc-review` (was `review-pane`); command `/inline-review` (was `/review-pane`); tools `mcp__inline-doc-review__open_file` / `open_files`. Saying "open inline review" opens it.
+- Repository moved to `paragpandyareal/inline-doc-review`; GitHub redirects the old URL.
+- Python helpers live in `~/.cache/inline-doc-review/venv`. Run `/inline-review setup` once after updating.
+- Existing users: install `inline-doc-review` and uninstall `review-pane`, since a rename is a new plugin to Claude Code.
+- Fix: `/inline-review examples` did not switch into the helper venv (a venv's python links to the system one), so generating the Excel and Word samples failed.
+
+Entries below use the old name.
+
 ## 0.4.1 — 2026-10-08
 
 - Fix: after Claude edited a file with a command (e.g. a Python script), the pane could keep showing "Claude is working on 1 comment" and not refresh. The pane now checks the open files' modification times directly after every command and every 2 seconds, so any edit shows at once. When Claude finishes a turn, sent comments stop showing as in progress.
