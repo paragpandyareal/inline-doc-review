@@ -49,3 +49,32 @@ Each review is an independent agent that **does not modify** the repo; it works 
 5. Check that it all still passes: `claude plugin validate --strict .`, `claude plugin test .` (25+ tests), and the TypeScript check.
 6. Bump the version, update `CHANGELOG.md`, copy the files into the session mods folder if one is in use, then commit and push.
 7. Tell the owner what was found, what was fixed, and anything deliberately left as is, with reasons.
+
+## Decisions (owner, 2026-10-08)
+
+The owner leaves the design of each fix to Claude, with two firm requirements:
+- **Comments are tied to the file and the text itself, not row numbers.**
+- **The goal is official acceptance in Anthropic's plugin directory.** Everything Anthropic checks must be covered: the pre-submission checklist, the security scan and the Software Directory Policy.
+
+### Fix design (chosen)
+
+| Area | Decision | Fixes |
+|---|---|---|
+| Excel formulas | **Remove pycel** (it compiles formulas to Python and runs `exec`). Replace it with a small, safe formula evaluator in `extract.py`: a parser with no `eval` or `exec`, covering numbers, cell refs and ranges (including `'Sheet'!A1`), `+ - * / ^ &`, comparisons, `SUM AVERAGE MIN MAX COUNT COUNTA ROUND ABS IF IFERROR AND OR NOT`. It reads cached values first. Anything unsupported shows as `ƒ` "not calculated". This also drops numpy and networkx from the supply chain. | SEC F1, F6 (part) |
+| Python packages | `requirements.txt` with exact versions **and sha256 hashes for every file on PyPI**, for direct and transitive dependencies. Install with `--require-hashes --only-binary=:all:` and no `--upgrade`. | SEC F6 |
+| Prompt injection | Document text goes in a fenced block, marked as untrusted file content, with a closing marker that can't be forged. Labels and file names lose control characters and newlines, and are length-capped. The prompt tells Claude to treat excerpts as data, not instructions. | SEC F2 |
+| DoS | Size cap for text formats (about 2 MB) and a row cap with a visible note. Fix the `markdownInline` regex backtracking. A newline-offset table for `htmlRows` `lineAt`. Recursion depth cap for ADF. Safe `fromCodePoint`. | SEC F3, F8; CQ F3, F19 |
+| File access | The model's tools (`open_file`, `open_files`) only open files under the session's working folder, after resolving symlinks with `fs.stat(resolve)`, or files the plugin already saw Claude write. `/inline-review <path>` typed by the user may open any path. | SEC F4 |
+| Folder scan | Skip it when the working folder is `$HOME` or `/`. Skip it for subagents. Never evict the open file. | SEC F5; CQ F7 |
+| Document state | Parsed documents live in a module cache keyed by path and mtime. `$.state` only holds small values (`open: {path, version}`). Loads carry a token, and stale results are dropped. Layout and wrapping are cached by path, version, width and raw. | CQ F1, F2, F4, F8 |
+| Comments | Anchored by **file and quoted text**. On reload, drafts re-anchor by finding their text (grid comments keep their cell reference). A draft whose text can't be found is marked "text changed" for the user. The lifecycle is draft → in prompt box → sent → done: a turn only clears the comments that turn received, and "Edit before sending" keeps comments until that prompt is actually submitted. | CQ F5, F6, F10 |
+| Robustness | Cursor moves are computed inside the update closure. Animation timers start once on mount. mtime changes are compared with `!==`, and missing files are marked. Gating hooks get `.catch` handlers. extract.py uses `reset_dimensions`, closes workbooks, emits no NaN, and reports truncation. | CQ F9, F11-F17 |
+| Simplify | Delete `tabs.tsx` (sheet tabs become Buttons), the pre-0.2 and pre-0.3 compatibility shims, the sparkline, the comment pop, the tab slide and the dump tests. Add shared helpers for repeated update sequences and tool results. Use `atob` for the PNG header. Remove dead types and fields. | SIMP 1-12 |
+| Docs | SECURITY.md (threat model, private reporting), plus README sections for permissions and data in plain language, privacy, uninstall and requirements. Bring HOW-IT-WORKS and HANDOVER up to date. Tool descriptions must match behaviour. | TRANSPARENCY |
+
+### Order (commit and push after each phase)
+1. Python: safe evaluator, hashed requirements, extract robustness.
+2. TypeScript core: document cache, open atom and token, layout cache, comment anchoring and lifecycle, file confinement, scan, catches, DoS fixes, prompt fencing.
+3. Simplification removals.
+4. Docs.
+5. Tests for every fix, then full validation (`--strict`), the test suite and the TypeScript check, then release 0.6.0.
