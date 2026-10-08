@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 — 2026-10-08
+
+- Fix: `open_file` and `open_files` failed in a live session. Claude Code passes tool arguments on the event itself (not under `input`, as the test kit does), and it requires a text result.
+
 ## 0.3.2 — 2026-10-08
 
 - New `open_files` tool: Claude can open several files as tabs at once, in order. `replace: true` starts the pane fresh, with only those tabs and no old comments (for a clean review or a demo).

@@ -481,24 +481,24 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'mcp__review-pane__open_file' }, async ($, e) => {
-    const input = e.input as { path?: unknown }
+    // A live session puts the arguments on the event; the test kit under `input`.
+    const input = ((e as { input?: unknown }).input ?? e) as { path?: unknown }
     const path = typeof input.path === 'string' ? resolvePath(input.path) : ''
     if (!path || !(await $.fs.exists(path))) {
-      return { result: { opened: false }, text: `No file at ${path || '(no path given)'}.`, isError: true }
+      return { result: `No file at ${path || '(no path given)'}.`, text: `No file at ${path || '(no path given)'}.`, isError: true }
     }
     if (!isSupported(path)) {
-      return { result: { opened: false }, text: `The review pane does not show .${extOf(path)} files.`, isError: true }
+      return { result: `The review pane does not show .${extOf(path)} files.`, text: `The review pane does not show .${extOf(path)} files.`, isError: true }
     }
     await show($, path)
     const opened = await openPane($)
-    return {
-      result: { opened: true, path },
-      text: opened.isPlaced ? `Opened ${path} in the review pane.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /review-pane).`,
-    }
+    const text = opened.isPlaced ? `Opened ${path} in the review pane.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /review-pane).`
+    // A live session takes a tool's result as text.
+    return { result: text, text }
   })
 
   on('tool.call', { tool: 'mcp__review-pane__open_files' }, async ($, e) => {
-    const input = e.input as { paths?: unknown; replace?: unknown }
+    const input = ((e as { input?: unknown }).input ?? e) as { paths?: unknown; replace?: unknown }
     const asked = Array.isArray(input.paths) ? input.paths.filter((p): p is string => typeof p === 'string').map(resolvePath) : []
     const usable: string[] = []
     const skipped: string[] = []
@@ -507,7 +507,7 @@ export const register: Register = on => {
       else skipped.push(path)
     }
     const first = usable[0]
-    if (!first) return { result: { opened: [] }, text: `None of those files can be opened: ${skipped.join(', ') || '(no paths given)'}.`, isError: true }
+    if (!first) return { result: `None of those files can be opened: ${skipped.join(', ') || '(no paths given)'}.`, text: `None of those files can be opened: ${skipped.join(', ') || '(no paths given)'}.`, isError: true }
     if (input.replace === true) {
       await update($, files, () => usable)
       await update($, comments, () => [])
@@ -518,10 +518,8 @@ export const register: Register = on => {
     }
     await show($, first)
     const opened = await openPane($)
-    return {
-      result: { opened: usable, skipped },
-      text: `Opened ${usable.length} file${usable.length === 1 ? '' : 's'} in the review pane${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /review-pane)'}.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}`,
-    }
+    const text = `Opened ${usable.length} file${usable.length === 1 ? '' : 's'} in the review pane${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /review-pane)'}.${skipped.length ? ` Skipped: ${skipped.join(', ')}.` : ''}`
+    return { result: text, text }
   })
 
   on('prompt.submit', async ($, e, next) => {
