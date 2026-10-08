@@ -18,7 +18,7 @@ _Started 2026-10-08. If you are a new Claude Code session picking this up, read 
 | Review | Status | Findings saved to |
 |---|---|---|
 | Information security and hack-proofing | **done** | `docs/reviews/security.md` |
-| QA (exploratory, new tests) | running | `docs/reviews/qa.md` |
+| QA (exploratory, new tests) | **done** | `docs/reviews/qa.md` (+ tests in `docs/reviews/qa-tests/`, to port into `tests/` as bugs are fixed) |
 | Code quality | **done** | `docs/reviews/code-quality.md` |
 | Transparency and docs | **done** | `docs/reviews/transparency.md` |
 | Simplification and bloat | **done** | `docs/reviews/simplification.md` |
@@ -78,3 +78,7 @@ The owner leaves the design of each fix to Claude, with two firm requirements:
 3. Simplification removals.
 4. Docs.
 5. Tests for every fix, then full validation (`--strict`), the test suite and the TypeScript check, then release 0.6.0.
+
+## Progress log
+- All 5 reviews done (2026-10-08). QA's failing-by-design tests are parked in `docs/reviews/qa-tests/`. Move each into `tests/` once its bug is fixed.
+- Phase 1 started: `scripts/formulas.py` (safe calculator, replaces pycel), written and unit-checked; not yet wired into `extract.py`.
