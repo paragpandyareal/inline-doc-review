@@ -3,8 +3,9 @@
 Workbooks written by scripts (openpyxl, which Claude often uses) carry no
 saved results, so their formula cells would show nothing. This works those
 values out for the common cases: numbers, text, cell references and ranges
-(also on other sheets), + - * / ^ & and comparisons, and SUM AVERAGE MIN MAX
-COUNT COUNTA ROUND ABS IF IFERROR AND OR NOT.
+(also on other sheets), dates, + - * / ^ & and comparisons, and SUM AVERAGE
+MIN MAX COUNT COUNTA ROUND ABS IF IFERROR AND OR NOT DATE SUMIF COUNTIF
+AVERAGEIF.
 
 It is an interpreter, not a compiler: formulas are parsed and evaluated here,
 never turned into Python code, and nothing is passed to eval or exec. Limits
@@ -12,12 +13,15 @@ on formula length, range size, reference depth and total work stop a
 malicious workbook from hanging it. Anything it does not support evaluates
 to None, and the pane shows the formula as not calculated.
 """
+import datetime
 import re
 
 MAX_FORMULA = 2000
 MAX_RANGE_CELLS = 100_000
 MAX_DEPTH = 60
 MAX_STEPS = 2_000_000
+# Excel counts days from this date (it keeps the 1900 leap-year quirk this offset absorbs).
+EPOCH = datetime.date(1899, 12, 30)
 
 TOKEN = re.compile(
     r"""\s*(?:
@@ -213,7 +217,8 @@ class Calculator:
             raise Unsupported("bad argument")
         return value
 
-    FUNCTIONS = {"IF", "IFERROR", "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "ABS", "ROUND", "AND", "OR", "NOT"}
+    FUNCTIONS = {"IF", "IFERROR", "SUM", "AVERAGE", "MIN", "MAX", "COUNT", "COUNTA", "ABS", "ROUND", "AND", "OR", "NOT",
+                 "DATE", "SUMIF", "COUNTIF", "AVERAGEIF"}
 
     def call(self, name, spans, tokens, sheet, depth):
         if name not in self.FUNCTIONS:
@@ -229,6 +234,14 @@ class Calculator:
             except (ExcelError, ZeroDivisionError):
                 return get(1)
         values = [get(k) for k in range(len(spans))]
+        if name in ("SUMIF", "COUNTIF", "AVERAGEIF"):
+            return self.conditional(name, values)
+        if name == "DATE":
+            y, m, d = (int(self.number(self.scalar(v))) for v in values[:3])
+            if y < 1900:
+                y += 1900
+            month = datetime.date(y + (m - 1) // 12, (m - 1) % 12 + 1, 1)
+            return float((month - EPOCH).days + d - 1)
         flat = [v for value in values for v in (value if isinstance(value, list) else [value])]
         numbers = [v for v in flat if isinstance(v, (int, float)) and not isinstance(v, bool)]
         if name == "SUM":
@@ -258,6 +271,40 @@ class Calculator:
             return not self.truth(self.scalar(values[0]))
         raise Unsupported(f"function {name}")
 
+    def conditional(self, name, values):
+        """SUMIF / COUNTIF / AVERAGEIF with a criterion like 5, "Red", ">90" or "<>Done"."""
+        if len(values) not in (2, 3) or not isinstance(values[0], list):
+            raise Unsupported(f"{name} arguments")
+        tested = values[0]
+        summed = values[2] if len(values) == 3 else tested
+        if not isinstance(summed, list) or len(summed) != len(tested):
+            raise Unsupported(f"{name} ranges")
+        criterion = self.scalar(values[1])
+        op, target = "=", criterion
+        if isinstance(criterion, str):
+            m = re.match(r"(<>|<=|>=|=|<|>)?(.*)$", criterion, re.S)
+            op, target = m.group(1) or "=", m.group(2)
+            try:
+                target = float(target)
+            except ValueError:
+                pass
+        picked = []
+        for value, add in zip(tested, summed):
+            if isinstance(target, str) or isinstance(value, str):
+                a, b = ("" if value is None else str(value)).lower(), str(target).lower()
+            else:
+                a, b = self.number(value), self.number(target)
+            if {"=": a == b, "<>": a != b, "<": a < b, ">": a > b, "<=": a <= b, ">=": a >= b}[op]:
+                picked.append(add)
+        numbers = [v for v in picked if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        if name == "COUNTIF":
+            return len(picked)
+        if name == "SUMIF":
+            return sum(numbers)
+        if not numbers:
+            raise ExcelError("#DIV/0!")
+        return sum(numbers) / len(numbers)
+
     # Values
 
     def tick(self):
@@ -281,6 +328,10 @@ class Calculator:
             return 1 if value else 0
         if isinstance(value, (int, float)):
             return value
+        if isinstance(value, datetime.datetime):
+            return (value - datetime.datetime(1899, 12, 30)).total_seconds() / 86400
+        if isinstance(value, datetime.date):
+            return float((value - EPOCH).days)
         try:
             return float(value)
         except ValueError:

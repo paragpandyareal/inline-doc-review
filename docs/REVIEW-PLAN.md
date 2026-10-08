@@ -82,3 +82,4 @@ The owner leaves the design of each fix to Claude, with two firm requirements:
 ## Progress log
 - All 5 reviews done (2026-10-08). QA's failing-by-design tests are parked in `docs/reviews/qa-tests/`. Move each into `tests/` once its bug is fixed.
 - Phase 1 started: `scripts/formulas.py` (safe calculator, replaces pycel), written and unit-checked; not yet wired into `extract.py`.
+- Phase 1 done in code: `extract.py` rewritten (safe `formulas.py` calculator instead of pycel; hash-locked `requirements.txt`, installed with `--require-hashes --only-binary=:all: --no-deps`; control-character stripping; size and zip-bomb caps; chart sheets, hidden sheets, dates, times, currencies, array formulas; Word numbering, merged cells, tracked insertions, content controls, image placeholder; PDF password message and cut-off note). QA reader checks: 18 of 19 pass. The remaining "numbered list" check is a test error: that file's numbering definition is a bullet.

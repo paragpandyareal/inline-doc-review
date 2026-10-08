@@ -1,7 +1,7 @@
 """QA checks for scripts/extract.py. Run: ~/.cache/inline-doc-review/venv/bin/python tests/qa/check_extract.py
 (after tests/qa/make_inputs.py has written /tmp/claude-1001/qareview/inputs). Prints PASS/FAIL per expectation."""
 import json, os, subprocess, sys
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 X = os.path.join(ROOT, "scripts", "extract.py")
 I = "/tmp/claude-1001/qareview/inputs"
 
