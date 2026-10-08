@@ -98,17 +98,24 @@ The message also tells Claude how to edit each format safely:
 - **ADF:** edit the node at the given path and keep every other node, mark and `localId`.
 - **PDF and PNG:** regenerate them from whatever they were made from.
 
-## Privacy
+## What it runs and accesses
 
-Everything stays on your machine. The pane reads files locally and the Python helpers run locally. The only thing sent anywhere is the comment message you choose to send to Claude, the same as typing it yourself.
+Review Pane is open about everything it does on your machine:
+
+- **Reads files** you open, and files Claude writes or edits in the session's working folder. After each command Claude runs, it also lists that folder (three levels deep, skipping `node_modules`, `.git` and similar) to notice new or changed documents.
+- **Runs a local Python helper** (`scripts/extract.py`) with `python3` to read Word, Excel and PDF files. It runs inside its own virtual environment and does nothing else.
+- **Downloads Python packages only when you ask:** `/review-pane setup` creates `~/.cache/review-pane/venv` and installs exact, pinned versions from PyPI: `python-docx==1.2.0`, `openpyxl==3.1.5`, `pypdf==6.19.0` and `pycel==1.0b30`, plus their dependencies.
+- **Writes files only when you ask:** `/review-pane examples` writes sample files into the folder you name, `./review-pane-examples` by default. The pane itself never edits your documents.
+- **Sends nothing over the network.** Your comments go to Claude only when you press Send or Edit before sending, as a normal prompt in your session.
+- **Remembers one setting:** whether auto-open is on, in Claude Code's plugin store.
 
 ## Try it
 
-The [`examples/`](examples/) folder has one file of each type, including `site-consumption.xlsx`, a 60-row × 18-column sheet for trying the big-sheet indicators:
+```
+/review-pane examples
+```
 
-```
-/review-pane examples/pilot-budget.xlsx
-```
+This writes a sample of each type into `./review-pane-examples` and opens them all. The Excel and Word samples are generated on your machine, which needs `/review-pane setup` first. They include `site-consumption.xlsx`, a 60-row × 18-column sheet for trying the big-sheet indicators. The Markdown, Confluence, HTML, CSV and PNG samples are in [`examples/`](examples/).
 
 ## Learn more
 

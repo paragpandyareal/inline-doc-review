@@ -24,6 +24,8 @@ const IMAGE_KINDS = ['png']
 /** What auto-open considers a finished output worth opening. */
 const AUTO_KINDS = ['docx', 'pdf', 'png', 'html', 'htm', 'md', 'markdown', 'adf']
 const AUTO_MAX_FILES = 5
+/** Sample files shipped as text; /review-pane examples copies them out. */
+const EXAMPLE_TEXTS = ['launch-plan.md', 'project-update.adf', 'pricing-page.html', 'meter-readings.csv']
 /** Comments listed under the document before the rest are counted. */
 const MAX_LISTED = 12
 const SCAN_SKIP = new Set(['node_modules', '.git', '.venv', 'venv', 'dist', 'build', '__pycache__', '.next', '.cache'])
@@ -415,8 +417,8 @@ export const register: Register = on => {
     await update($, autoOpen, () => stored === true)
     await $.command.register({
       name: 'review-pane',
-      description: 'Open the review pane, or a file in it: /review-pane [file] · /review-pane auto on|off · /review-pane setup',
-      argumentHint: '[file | auto on|off | setup]',
+      description: 'Open the review pane, or a file in it: /review-pane [file] · /review-pane examples · /review-pane auto on|off · /review-pane setup',
+      argumentHint: '[file | examples | auto on|off | setup]',
     })
     await $.tool.register({
       name: TOOL,
@@ -462,6 +464,27 @@ export const register: Register = on => {
     }
     if (args === 'auto') {
       return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /review-pane auto on|off.` }
+    }
+    if (args === 'examples' || args.startsWith('examples ')) {
+      // Text samples ship with the plugin; the Excel and Word ones are generated, so the plugin holds no binaries.
+      const folder = resolvePath(args.slice('examples'.length).trim() || 'review-pane-examples')
+      const written: string[] = []
+      for (const name of EXAMPLE_TEXTS) {
+        const text = await $.fs.read(`${$.plugin.root}/examples/${name}`)
+        await $.fs.write(`${folder}/${name}`, text)
+        written.push(`${folder}/${name}`)
+      }
+      const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/make_examples.py`, folder], { timeoutMs: 120_000 })
+      if (ran.exitCode === 0) written.unshift(...ran.stdout.trim().split('\n').filter(Boolean))
+      await update($, files, () => written)
+      await update($, comments, () => [])
+      if (written[0]) await show($, written[0])
+      await openPane($)
+      return {
+        text:
+          `Wrote ${written.length} sample files to ${folder} and opened them in the review pane.` +
+          (ran.exitCode === 0 ? '' : ' The Excel and Word samples need /review-pane setup first.'),
+      }
     }
     if (args === 'setup') {
       const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/extract.py`, 'setup'], { timeoutMs: 600_000 })

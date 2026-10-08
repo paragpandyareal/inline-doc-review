@@ -16,7 +16,8 @@ import sys
 
 VENV = os.path.join(os.path.expanduser("~"), ".cache", "review-pane", "venv")
 VENV_PY = os.path.join(VENV, "bin", "python")
-PACKAGES = ["python-docx", "openpyxl", "pypdf", "pycel"]
+# Exact versions, so every install gets the same, reviewed code.
+PACKAGES = ["python-docx==1.2.0", "openpyxl==3.1.5", "pypdf==6.19.0", "pycel==1.0b30"]
 
 MAX_ROWS = 4000
 MAX_SHEET_ROWS = 500

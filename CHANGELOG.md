@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-10-08
+
+Ready for Anthropic's plugin directory checks.
+
+- `/review-pane examples` writes a sample of each file type and opens them. The Excel and Word samples are generated locally (`scripts/make_examples.py`), so the plugin holds no Office or PDF binaries.
+- `/review-pane setup` installs exact, pinned package versions.
+- The README now lists everything the plugin runs, reads, writes and downloads.
+- Adds `displayName` "Review Pane".
+
 ## 0.3.5 — 2026-10-08
 
 - The top bar is one line: the open file's name (with extension), a ▾ dropdown listing every open file, and a ‹ n/N › stepper. Click ▾ or press ↓/Enter on the bar to drop the list down; ↑↓ and Enter, or a click, jump to a file; ← → step through them in order.

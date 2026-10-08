@@ -2,7 +2,7 @@
 
 Read this first when picking the project up in a new Claude Code session. It covers what exists, where it lives, how it got here and why, and what's next.
 
-_Last updated: 2026-10-08, at version 0.3.0._
+_Last updated: 2026-10-08, at version 0.4.0._
 
 ## In one paragraph
 
@@ -68,7 +68,7 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
   - a `motion: full | reduced | off` setting
   - `?` help and `⋯` overflow menus in the top bar
 - **Tests type-check loosely.** The test files have some type errors (`$.command.run` args, `console`). They run fine but should be tidied.
-- **Submitting to Anthropic's official plugin directory:** not done. Check the current process for submitting plugins and mods to the official marketplace.
+- **Anthropic directory listing:** prepared, not submitted. The owner will publish later; see "Publishing to Anthropic's directory" below.
 
 ## How to work on it in a new session
 
@@ -77,3 +77,41 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
 3. Read `docs/HOW-IT-WORKS.md`, then `hooks/register.tsx`, which holds the layout in `ui.render`.
 4. After changes: `claude plugin validate .` and `claude plugin test .`, then bump the version in `.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json`, update `CHANGELOG.md`, commit and push.
 5. Users get updates with `claude plugin update review-pane`, then `/reload-plugins`.
+
+## Start a new session on this project
+
+From the VPS shell:
+
+```bash
+cd /home/parag/review-pane && git pull && claude --plugin-dir /home/parag/review-pane "Read docs/HANDOVER.md and docs/HOW-IT-WORKS.md, then let's continue on Review Pane"
+```
+
+`--plugin-dir` loads this working copy (and hot-reloads it as files change), so the session both runs and develops the mod. The demo files for screen recordings are in `/home/parag/energy-regs-demo/`. Ask Claude to "open the demo files in the review pane".
+
+## Publishing to Anthropic's directory (when the owner decides)
+
+**Where it would live.** [Anthropic's directory](https://claude.ai/directory) is the official public catalog. People browse it on claude.ai (Customize → Plugins → Discover), with `/plugin directory` in Claude Code, and at [claude.com/marketplace/plugins](https://claude.com/marketplace/plugins). Mods are listed there **for Claude Code**. Anthropic's `claude-plugins-official` marketplace is a different thing: it takes listings only through Anthropic partner contacts.
+
+**Readiness (checked 2026-10-08 against the [pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist)):**
+
+| Check | Status |
+|---|---|
+| `claude plugin validate --strict .` | ✔ passes |
+| `name`, `displayName`, `version`, `description`, `author`, `homepage`, `repository`, `license` | set |
+| README (more than 40 words) and LICENSE | present (995 words, MIT) |
+| Text and images only, files under 256 KiB, under 512 files, no system files or symlinks | 31 files, largest 58 KB, one PNG |
+| Package installs pinned | `python-docx==1.2.0`, `openpyxl==3.1.5`, `pypdf==6.19.0`, `pycel==1.0b30` |
+| README discloses what it runs, reads, writes and downloads | "What it runs and accesses" section |
+| No credentials, no network calls of its own | ✔ |
+
+**Possible reviewer holds (not blockers):**
+- **Generic name:** `review-pane` is made of generic words, so the portal may hold it as "Name may be confused with an existing listing". A reviewer then decides. If the owner wants to avoid that, rename **before the first listing** (for example `parag-review-pane`), since names are permanent once people install.
+- **Package installs:** `/review-pane setup` installs packages, and the pinned packages' own dependencies resolve at install time.
+
+**Steps:**
+1. Bump `version` in `.claude-plugin/plugin.json` and `marketplace.json`, update `CHANGELOG.md`, then commit and push.
+2. Sign in to claude.ai with a paid plan and open [claude.ai/directory/manage](https://claude.ai/directory/manage).
+3. **Submit new** → **Plugin bundle** → repository `paragpandyareal/review-pane`, branch `main`, plugin path: the repository root.
+4. Press **Validate**. Fix anything marked **Blocking**, push, then **Re-validate**.
+5. Submit. After that the security scan and review run; the developer portal shows progress.
+6. For later versions, bump `version` and push; the directory picks up new commits on the followed branch.
