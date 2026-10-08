@@ -1,0 +1,11 @@
+{
+  "name": "review-pane",
+  "version": "0.3.0",
+  "description": "Review what Claude makes without leaving Claude Code: Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG open in a pane, you highlight a part and comment, and Claude edits the real file.",
+  "author": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
+  "homepage": "https://github.com/paragpandyareal/review-pane",
+  "repository": "https://github.com/paragpandyareal/review-pane",
+  "license": "MIT",
+  "keywords": ["review", "comments", "excel", "word", "pdf", "markdown", "confluence", "adf", "pane", "mod"],
+  "types": "./types/index.d.ts"
+}

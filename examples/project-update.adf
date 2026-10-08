@@ -1,0 +1,22 @@
+{"version":1,"type":"doc","content":[
+{"type":"heading","attrs":{"level":1},"content":[{"type":"text","text":"Solar Rebate Pilot – Project Update"}]},
+{"type":"paragraph","content":[{"type":"text","text":"Owner: "},{"type":"mention","attrs":{"id":"1","text":"@Priya Shah"}},{"type":"text","text":" · Status: "},{"type":"status","attrs":{"text":"On track","color":"green"}},{"type":"text","text":" · Updated "},{"type":"date","attrs":{"timestamp":"1791504000000"}}]},
+{"type":"panel","attrs":{"panelType":"info"},"content":[{"type":"paragraph","content":[{"type":"text","text":"This page is published to Confluence from the "},{"type":"text","text":"pilot-budget.xlsx","marks":[{"type":"code"}]},{"type":"text","text":" workbook every Friday."}]}]},
+{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Highlights"}]},
+{"type":"bulletList","content":[
+ {"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"137 households signed","marks":[{"type":"strong"}]},{"type":"text","text":" in the first three weeks (target 500)."}]}]},
+ {"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Penrith is converting best at 32%."}]},{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Letterbox drop drove most enquiries."}]}]}]}]},
+ {"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Read the "},{"type":"text","text":"installer agreement","marks":[{"type":"link","attrs":{"href":"https://example.com/agreement"}}]},{"type":"text","text":" before the next steering meeting."}]}]}]},
+{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Sign-ups by suburb"}]},
+{"type":"table","content":[
+ {"type":"tableRow","content":[{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Suburb"}]}]},{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Target"}]}]},{"type":"tableHeader","content":[{"type":"paragraph","content":[{"type":"text","text":"Signed"}]}]}]},
+ {"type":"tableRow","content":[{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Penrith"}]}]},{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"200"}]}]},{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"64"}]}]}]},
+ {"type":"tableRow","content":[{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Blacktown"}]}]},{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"180"}]}]},{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"51"}]}]}]},
+ {"type":"tableRow","content":[{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"Mount Druitt"}]}]},{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"120"}]}]},{"type":"tableCell","content":[{"type":"paragraph","content":[{"type":"text","text":"22"}]}]}]}]},
+{"type":"panel","attrs":{"panelType":"warning"},"content":[{"type":"paragraph","content":[{"type":"text","text":"Installer capacity may cap sign-ups at around "},{"type":"text","text":"350","marks":[{"type":"strong"}]},{"type":"text","text":" if demand stays this high."}]}]},
+{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":"Next steps"}]},
+{"type":"taskList","attrs":{"localId":"t1"},"content":[
+ {"type":"taskItem","attrs":{"localId":"a","state":"DONE"},"content":[{"type":"text","text":"Confirm the Blacktown info night venue"}]},
+ {"type":"taskItem","attrs":{"localId":"b","state":"TODO"},"content":[{"type":"text","text":"Approve the extra $5,000 installer bonus"}]},
+ {"type":"taskItem","attrs":{"localId":"c","state":"TODO"},"content":[{"type":"text","text":"Send the March newsletter"}]}]}
+]}

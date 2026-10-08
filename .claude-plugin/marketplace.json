@@ -1,0 +1,13 @@
+{
+  "name": "review-pane",
+  "owner": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
+  "metadata": { "description": "Review pane for Claude Code: comment on the files Claude makes, and Claude applies the feedback." },
+  "plugins": [
+    {
+      "name": "review-pane",
+      "source": "./",
+      "description": "Open Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files in a pane, highlight a part, comment, and send the feedback to Claude.",
+      "version": "0.3.0"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+# Written by Claude Code each time it loads the mod
+.claude-plugin/types/
+tsconfig.json
+# Python
+__pycache__/
+*.pyc
+.venv/
+# OS / editors
+.DS_Store
+*.swp
