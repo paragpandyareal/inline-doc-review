@@ -7,8 +7,7 @@ When Claude produces a spreadsheet, a Word document, a PDF, a Confluence page, a
 There's no hunting for the file in a folder and no switching apps. You don't need to know how to edit an `.xlsx` or ADF file either.
 
 ```
- XLSX  pilot-budget.xlsx   launch-plan.md   project-update.adf     ⟳ Reload   ● Auto-open
- ━━━━━━━━━━━━━━━━━
+ XLSX  pilot-budget.xlsx  ▾ ‹ 1/3 ›                                    ⟳ Reload   ● Auto-open
   E2     ƒx  =SUM(B2:D2)                                                        = 16,700
  ───────────────────────────────────────────────────────────────────────────────────────
       ┃  A                    B          C          D          E
@@ -73,7 +72,7 @@ This installs the small Python libraries the pane uses to read Word, Excel and P
 | Comment | Click or drag over cells, lines or paragraphs. Type in **Comment on…** and press Enter. Repeat for as many places as you like. |
 | Review or change a comment | Click it in the list. It jumps to the spot and the box edits it. Clear the text and press Enter, or click ✕, to delete it. |
 | Send | **➤ Send N comments to Claude** sends them now. **Edit before sending** puts them in your prompt box first. |
-| Switch files | Click a tab, or click the tab row and use ← →. |
+| Switch files | Click ▾ next to the file name to drop down every open file and pick one, or use ← → on the top bar to step through them. |
 | Switch sheets | Click a sheet tab under the grid, or press `[` and `]`. |
 
 **Keyboard** (click the document first): arrows move, Shift+arrows extend the selection, PgUp/PgDn scroll, Backspace clears the selection.

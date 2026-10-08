@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5 — 2026-10-08
+
+- The top bar is one line: the open file's name (with extension), a ▾ dropdown listing every open file, and a ‹ n/N › stepper. Click ▾ or press ↓/Enter on the bar to drop the list down; ↑↓ and Enter, or a click, jump to a file; ← → step through them in order.
+
 ## 0.3.4 — 2026-10-08
 
 - File tabs no longer squeeze names: tabs wrap onto extra rows, names drop their extension, and a coloured square shows each file's type.

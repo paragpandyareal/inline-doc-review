@@ -222,8 +222,46 @@ test('open_files with replace makes exactly those tabs, in order, and clears old
   expect(ran.text).toContain('Opened 2 files')
   expect(ran.text).toContain('Skipped: /w/nope.exe')
   const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  // Closed, the bar shows only the open file; ↓ drops down the list of all of them.
+  expect(JSON.stringify(await ui.drawn({ in: 'file-tabs' }))).not.toContain('two.md')
+  await ui.key({ key: 'down', in: 'file-tabs' })
   const tabs = JSON.stringify(await ui.drawn({ in: 'file-tabs' }))
-  expect(tabs).toContain('"one"')
-  expect(tabs).toContain('"two"')
-  expect(tabs).not.toContain('"old"')
+  expect(tabs).toContain('one.md')
+  expect(tabs).toContain('two.md')
+  expect(tabs).not.toContain('old.md')
+})
+
+test('the file bar: one line, a dropdown to jump, and ← → to step', async ($, on) => {
+  mock.store(on)
+  on('fs.exists', () => ({ value: true }))
+  on('fs.read', ($, e) => ({ value: `# Title of ${String((e as { path?: string }).path ?? '')}` }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await $.tool.call({ tool: 'mcp__review-pane__open_files', input: { paths: ['/w/a.md', '/w/b.md', '/w/c.md', '/w/d.md'], replace: true } })
+  const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  const bar = async () => JSON.stringify(await ui.drawn({ in: 'file-tabs' }))
+  expect(await bar()).toContain('a.md')
+  expect(await bar()).toContain(' 1/4 ')
+  expect(await bar()).not.toContain('c.md')
+
+  // Drop down, move to the third file, open it.
+  await ui.key({ key: 'return', in: 'file-tabs' })
+  expect(await bar()).toContain('d.md')
+  await ui.key({ key: 'down', in: 'file-tabs' })
+  await ui.key({ key: 'down', in: 'file-tabs' })
+  await ui.key({ key: 'return', in: 'file-tabs' })
+  expect(await ui.find({ type: 'Text', text: /Title of \/w\/c\.md/, in: 'viewer' })).toBeDefined()
+  expect(await bar()).toContain(' 3/4 ')
+  expect(await bar()).not.toContain('a.md')
+
+  // Step with the arrows, wrapping round.
+  await ui.key({ key: 'right', in: 'file-tabs' })
+  await ui.key({ key: 'right', in: 'file-tabs' })
+  expect(await bar()).toContain(' 1/4 ')
+  await ui.key({ key: 'left', in: 'file-tabs' })
+  expect(await ui.find({ type: 'Text', text: /Title of \/w\/d\.md/, in: 'viewer' })).toBeDefined()
+
+  // A click on a listed file jumps straight to it.
+  await ui.pointer({ type: 'down', x: 8, y: 0, button: 'left', in: 'file-tabs' })
+  await ui.pointer({ type: 'down', x: 6, y: 2, button: 'left', in: 'file-tabs' })
+  expect(await bar()).toContain(' 2/4 ')
 })

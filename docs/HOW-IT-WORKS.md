@@ -26,7 +26,8 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/hooks.json` | — | Names the hooks module |
 | `hooks/register.tsx` | hooks environment | **The core.** Hooks, state, file loading, the pane layout (`ui.render`) and message handling (`ui.message`). |
 | `hooks/viewer.tsx` | drawing thread (a `Client` surface module) | The document and grid view. Turns mouse drags and keys into posts. Runs the motion: the changed-cell glow and the comment-marker pop. |
-| `hooks/tabs.tsx` | drawing thread | Tab rows: the top bar (badge, file tabs, switches) and the sheet tabs. The underline slides between tabs. |
+| `hooks/filebar.tsx` | drawing thread | The top bar: file-type badge, the open file's name, a ▾ dropdown of all open files, a ‹ n/N › stepper (← →), and switches |
+| `hooks/tabs.tsx` | drawing thread | Sheet tabs under a spreadsheet, wrapping when many; the underline slides between tabs |
 | `hooks/spinner.tsx` | drawing thread | "Claude is working on N comments…" with a braille spinner and a sweeping highlight |
 | `hooks/md.ts`, `html.ts`, `adf.ts` | hooks environment | Read Markdown, HTML and ADF into formatted rows (`DocRow`) |
 | `hooks/format.ts` | hooks environment | Shared helpers: inline Markdown, table layout, span tidying |

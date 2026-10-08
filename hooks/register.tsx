@@ -8,6 +8,7 @@ import type { SpinnerProps } from './spinner'
 import { plain, tableRows, tidy } from './format'
 import { htmlRows } from './html'
 import { markdownRows } from './md'
+import type { FileBarProps } from './filebar'
 import type { TabsPost, TabsProps } from './tabs'
 import type { GridRow, LineRow, ViewerPost, ViewerProps, ViewPal } from './viewer'
 
@@ -663,39 +664,20 @@ export const register: Register = on => {
     const newest = drafts[drafts.length - 1]
 
     // ── Top bar: file-type badge, file tabs, switches ──
-    const shownFiles = list.slice(0, 12)
-    // Names without their extension: the coloured square before each says what type it is.
-    const labels = shownFiles.map(one => baseName(one).replace(/\.[^.]+$/, ''))
-    const dots = shownFiles.map(one => BADGES[extOf(one)]?.bg ?? pal.dim)
     const activeFile = Math.max(0, list.indexOf(path ?? ''))
-    const asides: NonNullable<TabsProps['asides']> = []
+    const fileItems = list.map(one => ({ name: baseName(one), color: BADGES[extOf(one)]?.bg ?? pal.dim }))
+    const asides: NonNullable<FileBarProps['asides']> = []
     if (d?.kind === 'lines' && d.hasSource) asides.push({ id: 'source', label: v.raw ? '◧ Formatted' : '‹› Source', color: pal.subtle })
     if (path) asides.push({ id: 'reload', label: '⟳ Reload', color: pal.subtle })
     asides.push({ id: 'auto', label: isAuto ? '● Auto-open' : '○ Auto-open', color: isAuto ? pal.success : pal.dim, isBold: isAuto })
     const badge = path ? BADGES[extOf(path)] : undefined
-    // How many rows the wrapped tabs take, as tabs.tsx lays them out.
-    const tabRows = (() => {
-      let rowsUsed = 1
-      let x = badge ? badge.label.length + 4 : 0
-      let room = columns - x - asides.reduce((n, a) => n + a.label.length + 3, 0)
-      for (const label of labels) {
-        const w = label.length + 2
-        if (x > 0 && x + w > room) {
-          rowsUsed += 1
-          x = 0
-          room = columns
-        }
-        x += w + 4
-      }
-      return rowsUsed
-    })()
     const colors = { accent: pal.accent, text: pal.text, subtle: pal.subtle, dim: pal.dim }
-    const height = clamp(e.props.scroll.bodyRows - chromeBase - 2 * (tabRows - 1), 5, 60)
+    const height = clamp(e.props.scroll.bodyRows - chromeBase + 1, 5, 60)
     const topBar = Client ? (
       <Client
         key="file-tabs"
-        module="./tabs.tsx"
-        props={{ group: 'files', labels, dots, active: activeFile, colors, ...(badge ? { badge } : {}), asides } satisfies TabsProps}
+        module="./filebar.tsx"
+        props={{ files: fileItems, active: activeFile, colors: { ...colors, band: pal.band }, ...(badge ? { badge } : {}), asides } satisfies FileBarProps}
       />
     ) : (
       <Text bold>{baseName(path ?? 'Review')}</Text>
