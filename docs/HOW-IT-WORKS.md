@@ -30,7 +30,7 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/spinner.tsx` | drawing thread | "Claude is working on N comments…" with a braille spinner and a sweeping highlight |
 | `hooks/md.ts`, `html.ts`, `adf.ts` | hooks environment | Read Markdown, HTML and ADF into formatted rows (`DocRow`) |
 | `hooks/format.ts` | hooks environment | Shared helpers: inline Markdown, table layout, span tidying |
-| `hooks/palette.ts` | hooks environment | Colours: Catppuccin Mocha/Latte chosen by the `/config` theme, theme keys under ANSI and colour-blind themes, and file-type badges |
+| `hooks/palette.ts` | hooks environment | Colours: a slate-and-blue scheme (GitHub-style dark/light) chosen by the `/config` theme, theme keys under ANSI and colour-blind themes, and file-type badges |
 | `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. Runs itself under `~/.cache/review-pane/venv` once `/review-pane setup` has created it. Uses `pycel` to calculate formulas that have no saved result (files written by openpyxl never have one). |
 | `types/index.d.ts` | — | The state contract. Every `$.state` value and its type, declared under `PluginState['review-pane']`. |
 | `tests/*.test.tsx` | `claude plugin test` | 19 tests: every file type opened and commented on, the comment flow, keys, motion, tab order. `dump*.test.tsx` print what the pane draws, which is useful when changing the layout. |

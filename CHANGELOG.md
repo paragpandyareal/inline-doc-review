@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 — 2026-10-08
+
+- File tabs no longer squeeze names: tabs wrap onto extra rows, names drop their extension, and a coloured square shows each file's type.
+- New calmer colour scheme (slate and blue, GitHub-style dark and light) replaces the purple Catppuccin palette: blue for focus, teal for formulas, amber for comments, green for changes.
+
 ## 0.3.3 — 2026-10-08
 
 - Fix: `open_file` and `open_files` failed in a live session. Claude Code passes tool arguments on the event itself (not under `input`, as the test kit does), and it requires a text result.

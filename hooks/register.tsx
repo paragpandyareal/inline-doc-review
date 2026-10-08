@@ -657,31 +657,45 @@ export const register: Register = on => {
     const listed = drafts.slice(0, MAX_LISTED)
     // Rows around the document: top bar 2, bar 1, rule 1, [sheet tabs 2, more-rows 1], gap 1, comment 1,
     // gap 1, comments header 1 + list, gap 1, actions 1, rule 1, keys 1.
-    const chrome = 13 + (isGrid ? 3 : 0) + (drafts.length > 0 ? listed.length : 0)
-    const height = clamp(e.props.scroll.bodyRows - chrome, 5, 60)
+    const chromeBase = 13 + (isGrid ? 3 : 0) + (drafts.length > 0 ? listed.length : 0)
     const rule = (color: string) => <Text color={color}>{'─'.repeat(columns)}</Text>
     const freshKey = change && change.path === path ? change.key : 0
     const newest = drafts[drafts.length - 1]
 
     // ── Top bar: file-type badge, file tabs, switches ──
-    const labels = list.slice(0, 8).map(baseName)
+    const shownFiles = list.slice(0, 12)
+    // Names without their extension: the coloured square before each says what type it is.
+    const labels = shownFiles.map(one => baseName(one).replace(/\.[^.]+$/, ''))
+    const dots = shownFiles.map(one => BADGES[extOf(one)]?.bg ?? pal.dim)
     const activeFile = Math.max(0, list.indexOf(path ?? ''))
     const asides: NonNullable<TabsProps['asides']> = []
     if (d?.kind === 'lines' && d.hasSource) asides.push({ id: 'source', label: v.raw ? '◧ Formatted' : '‹› Source', color: pal.subtle })
     if (path) asides.push({ id: 'reload', label: '⟳ Reload', color: pal.subtle })
     asides.push({ id: 'auto', label: isAuto ? '● Auto-open' : '○ Auto-open', color: isAuto ? pal.success : pal.dim, isBold: isAuto })
     const badge = path ? BADGES[extOf(path)] : undefined
-    const room = columns - asides.reduce((n, a) => n + a.label.length + 3, 0) - (badge ? badge.label.length + 4 : 0)
-    const fitted = labels.map((label, i) => {
-      const most = i === activeFile ? Math.min(label.length, Math.max(12, room - 10)) : Math.max(6, Math.floor(room / Math.max(1, labels.length)) - 3)
-      return label.length > most ? `${label.slice(0, most - 1)}…` : label
-    })
+    // How many rows the wrapped tabs take, as tabs.tsx lays them out.
+    const tabRows = (() => {
+      let rowsUsed = 1
+      let x = badge ? badge.label.length + 4 : 0
+      let room = columns - x - asides.reduce((n, a) => n + a.label.length + 3, 0)
+      for (const label of labels) {
+        const w = label.length + 2
+        if (x > 0 && x + w > room) {
+          rowsUsed += 1
+          x = 0
+          room = columns
+        }
+        x += w + 4
+      }
+      return rowsUsed
+    })()
     const colors = { accent: pal.accent, text: pal.text, subtle: pal.subtle, dim: pal.dim }
+    const height = clamp(e.props.scroll.bodyRows - chromeBase - 2 * (tabRows - 1), 5, 60)
     const topBar = Client ? (
       <Client
         key="file-tabs"
         module="./tabs.tsx"
-        props={{ group: 'files', labels: fitted, active: activeFile, colors, ...(badge ? { badge } : {}), asides } satisfies TabsProps}
+        props={{ group: 'files', labels, dots, active: activeFile, colors, ...(badge ? { badge } : {}), asides } satisfies TabsProps}
       />
     ) : (
       <Text bold>{baseName(path ?? 'Review')}</Text>

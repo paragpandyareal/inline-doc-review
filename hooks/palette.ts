@@ -1,6 +1,7 @@
 /**
- * The pane's colours: Catppuccin Mocha on dark terminals, Latte on light
- * ones, so nothing is pastel-on-white or neon-on-black. Under an ANSI or
+ * The pane's colours: a calm slate-and-blue scheme (GitHub-style dark and
+ * light), blue for focus, teal for formulas, amber for comments, green for
+ * what changed; nothing pastel-on-white or neon-on-black. Under an ANSI or
  * colour-blind theme the theme's own keys stand in, so the person's choice
  * wins.
  */
@@ -29,49 +30,49 @@ export type Palette = {
 }
 
 const DARK: Palette = {
-  text: '#CDD6F4',
-  subtle: '#A6ADC8',
-  dim: '#6C7086',
-  accent: '#CBA6F7',
-  formula: '#94E2D5',
-  comment: '#FAB387',
-  selection: '#45475A',
-  h2: '#89B4FA',
-  h3: '#74C7EC',
-  link: '#89B4FA',
-  code: '#F5C2E7',
-  band: '#313244',
-  zebra: '#24273A',
-  flash: '#2E5E3A',
+  text: '#C9D1D9',
+  subtle: '#9AA4B2',
+  dim: '#5C6773',
+  accent: '#58A6FF',
+  formula: '#39C5CF',
+  comment: '#E3B341',
+  selection: '#1F3A5F',
+  h2: '#58A6FF',
+  h3: '#39C5CF',
+  link: '#58A6FF',
+  code: '#F0883E',
+  band: '#21262D',
+  zebra: '#161B22',
+  flash: '#1B4721',
   claude: '#D97757',
-  info: '#89B4FA',
-  note: '#CBA6F7',
-  warning: '#F9E2AF',
-  success: '#A6E3A1',
-  error: '#F38BA8',
+  info: '#58A6FF',
+  note: '#9AA4B2',
+  warning: '#E3B341',
+  success: '#3FB950',
+  error: '#F85149',
 }
 
 const LIGHT: Palette = {
-  text: '#4C4F69',
-  subtle: '#6C6F85',
-  dim: '#9CA0B0',
-  accent: '#8839EF',
-  formula: '#179299',
-  comment: '#FE640B',
-  selection: '#CCD0DA',
-  h2: '#1E66F5',
-  h3: '#209FB5',
-  link: '#1E66F5',
-  code: '#EA76CB',
-  band: '#E6E9EF',
-  zebra: '#F2F3F7',
-  flash: '#C8F0C8',
+  text: '#24292F',
+  subtle: '#57606A',
+  dim: '#8C959F',
+  accent: '#0969DA',
+  formula: '#0E7490',
+  comment: '#BC4C00',
+  selection: '#DDF4FF',
+  h2: '#0969DA',
+  h3: '#0E7490',
+  link: '#0969DA',
+  code: '#953800',
+  band: '#F0F3F6',
+  zebra: '#F6F8FA',
+  flash: '#DAFBE1',
   claude: '#D97757',
-  info: '#1E66F5',
-  note: '#8839EF',
-  warning: '#DF8E1D',
-  success: '#40A02B',
-  error: '#D20F39',
+  info: '#0969DA',
+  note: '#57606A',
+  warning: '#9A6700',
+  success: '#1A7F37',
+  error: '#CF222E',
 }
 
 /** The theme's own keys, for ANSI and colour-blind themes. Backgrounds fall back to none. */
