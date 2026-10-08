@@ -69,8 +69,8 @@ Everything the drawing reads lives in `$.state` (declared in `types/index.d.ts`)
 |---|---|
 | `session.start` | Registers `/review-pane` and the `open_file` tool. Reads the theme and the auto-open setting. Rereads the open file, since the format may have changed across versions. |
 | `tool.call` (Write, Edit, MultiEdit, NotebookEdit) | Notes files Claude wrote |
-| `tool.call` (Bash) | Scans the working folder (3 levels deep, skipping `node_modules`, `.git` and the like) for supported files changed during the command, which catches files Python scripts make |
-| `prompt.submit` / `turn.complete` | Collects the files made in a turn. If auto-open is on and the turn made 1–5 documents, opens the pane on them. |
+| timer (every 2 s) + `tool.call` (Bash) | Checks each open file's modification time and rereads any that changed, however they changed. Then scans the working folder (3 levels deep, skipping `node_modules`, `.git` and the like) for supported files changed during the command, which catches files Python scripts make |
+| `prompt.submit` / `turn.complete` | Collects the files made in a turn; at the end of a turn, clears sent comments still shown as in progress. If auto-open is on and the turn made 1–5 documents, opens the pane on them. |
 | `ui.render` (Pane `review`) | Draws the pane |
 | `ui.message` | Posts from the viewer and tabs: select, move, scroll, sheet, tab, and the switches (`source`, `reload`, `auto`) |
 

@@ -265,3 +265,54 @@ test('the file bar: one line, a dropdown to jump, and ← → to step', async ($
   await ui.pointer({ type: 'down', x: 6, y: 2, button: 'left', in: 'file-tabs' })
   expect(await bar()).toContain(' 2/4 ')
 })
+
+test('an edit made by a command refreshes the open file at once, and the spinner clears when Claude finishes', async ($, on) => {
+  mock.store(on)
+  mock.clock(on)
+  let budget: typeof BUDGET = BUDGET
+  let mtime = 1000
+  on('fs.exists', () => ({ value: true }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: 100, mtimeMs: mtime, isLink: false } }))
+  on('fs.list', () => ({ value: [] }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(budget), stderr: '' } }))
+  // What Claude's command does: rewrite the workbook on disk.
+  on('tool.call', { tool: 'Bash' }, () => {
+    const edited = JSON.parse(JSON.stringify(BUDGET)) as typeof BUDGET
+    const b2 = edited.sheets[0]?.rows[1]?.[1]
+    if (b2) Object.assign(b2, { v: '810', x: 810 })
+    budget = edited
+    mtime = 2000
+    return { result: 'ok', text: 'ok' }
+  })
+  await $.command.run({ command: 'review-pane', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })
+  await ui.input({ key: 'comment-0', text: 'Make this 810' })
+  await ui.press({ key: 'send' })
+  expect(await ui.find({ key: 'spinner' })).toBeDefined()
+
+  await $.tool.call({ tool: 'Bash', input: { command: 'python3 edit.py' } })
+  expect(await ui.find({ type: 'Text', text: /810/, in: 'viewer' })).toBeDefined()
+  expect(await ui.find({ key: 'spinner' })).toBeUndefined()
+})
+
+test('when Claude finishes without changing the file, sent comments stop showing as in progress', async ($, on) => {
+  mock.store(on)
+  mock.clock(on)
+  on('fs.exists', () => ({ value: true }))
+  on('fs.stat', () => ({ value: { kind: 'file', size: 100, mtimeMs: 1000, isLink: false } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  on('turn.complete', () => ({ text: 'done' }))
+  await $.command.run({ command: 'review-pane', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'review-pane', surface: 'terminal', ...PANE })
+  await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })
+  await ui.input({ key: 'comment-0', text: 'Is this right?' })
+  await ui.press({ key: 'send' })
+  expect(await ui.find({ key: 'spinner' })).toBeDefined()
+  await $.turn.complete({ answer: 'It is right.', durationMs: 10, isAborted: false, turnId: 't1', reason: 'end_turn' } as never)
+  expect(await ui.find({ key: 'spinner' })).toBeUndefined()
+})

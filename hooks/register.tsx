@@ -160,6 +160,7 @@ function diffDocs(before: Doc | null, after: Doc): { rows: number[]; cells: stri
 /** Puts a file in the list and, when it is the one shown, reads it again. */
 async function track($: EngineInterface, path: string) {
   await update($, files, list => (list.includes(path) ? list : [...list, path].slice(-30)))
+  seen.set(path, await mtimeOf($, path))
   if ((await read($, current)) === path) {
     const before = await read($, doc)
     const fresh = await loadDoc($, path, (await read($, view)).raw === true)
@@ -179,6 +180,7 @@ async function track($: EngineInterface, path: string) {
 
 async function show($: EngineInterface, path: string) {
   await update($, files, list => (list.includes(path) ? list : [...list, path].slice(-30)))
+  seen.set(path, await mtimeOf($, path))
   const loaded = await loadDoc($, path)
   await update($, current, () => path)
   await update($, doc, () => loaded)
@@ -388,6 +390,38 @@ async function scan($: EngineInterface, dir: string, since: number, depth: numbe
   }
 }
 
+/** Each open file's modification time when the pane last read it. */
+const seen = new Map<string, number>()
+
+async function mtimeOf($: EngineInterface, path: string): Promise<number> {
+  try {
+    return (await $.fs.stat(path)).mtimeMs
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Rereads every open file that changed on disk since the pane last read it,
+ * however it changed: a Write or Edit, a script, another app. Cheap: one stat
+ * per open file. Returns the paths it reread.
+ */
+async function refreshChanged($: EngineInterface): Promise<string[]> {
+  const changedPaths: string[] = []
+  for (const path of await read($, files)) {
+    const now = await mtimeOf($, path)
+    const before = seen.get(path)
+    if (before === undefined) {
+      seen.set(path, now)
+    } else if (now > before) {
+      seen.set(path, now)
+      await track($, path)
+      changedPaths.push(path)
+    }
+  }
+  return changedPaths
+}
+
 /** Switches a Markdown, HTML or ADF file between its formatted view and its source. */
 async function toggleSource($: EngineInterface) {
   const path = await read($, current)
@@ -413,6 +447,9 @@ export const register: Register = on => {
     }
     const theme = (await $.config.list().catch(() => [])).find(row => row.key === 'theme')
     session.theme = typeof theme?.value === 'string' ? theme.value : 'dark'
+    // Watch the open files: whatever changes one, the pane rereads it within a couple of seconds.
+    for (const path of await read($, files)) seen.set(path, await mtimeOf($, path))
+    $.clock.every(2000, () => void refreshChanged($).catch(() => undefined))
     const stored = await $.store.get('autoOpen')
     await update($, autoOpen, () => stored === true)
     await $.command.register({
@@ -556,9 +593,12 @@ export const register: Register = on => {
     if (tool === 'Bash') {
       const since = (await $.clock.now()) - 1000
       const ran = await next(e)
+      // Open files first: a direct check, so an edit made by a script shows at once.
+      for (const path of await refreshChanged($)) session.turnFiles.add(path)
+      const open = new Set(await read($, files))
       const found: string[] = []
       await scan($, session.cwd, since, 3, found, { left: 4000 })
-      for (const path of found.slice(0, 20)) await noteFile($, path)
+      for (const path of found.filter(one => !open.has(one)).slice(0, 20)) await noteFile($, path)
       return ran
     }
     const ran = await next(e)
@@ -571,6 +611,15 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
+    if (e.agentId === undefined) {
+      // Claude has finished: pick up any edit not seen yet, then stop showing "working" for sent comments.
+      await refreshChanged($)
+      const stillSent = (await read($, comments)).filter(c => c.status === 'sent')
+      if (stillSent.length > 0) {
+        await update($, comments, old => old.filter(c => c.status !== 'sent'))
+        $.ui.toast(`✓ Claude finished with ${stillSent.length} comment${stillSent.length === 1 ? '' : 's'}`)
+      }
+    }
     if (e.agentId !== undefined || session.turnFiles.size === 0) return done
     const made = [...session.turnFiles]
     session.turnFiles = new Set()

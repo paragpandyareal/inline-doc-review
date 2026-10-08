@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-10-08
+
+- Fix: after Claude edited a file with a command (e.g. a Python script), the pane could keep showing "Claude is working on 1 comment" and not refresh. The pane now checks the open files' modification times directly after every command and every 2 seconds, so any edit shows at once. When Claude finishes a turn, sent comments stop showing as in progress.
+
 ## 0.4.0 — 2026-10-08
 
 Ready for Anthropic's plugin directory checks.
