@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.1 — 2026-10-09
+
+**Help for people without Python, and they stay in charge.**
+- When `/panda setup` finds no Python, it installs nothing. It puts a plain-language request in the prompt box, asking Claude to help install Python. Nothing happens unless you press Enter. Claude is asked to explain what it would install, ask before installing, and walk you through it step by step.
+- When `/panda setup` fails, the error goes into a request the same way, so Claude can explain it and help fix it.
+- Opening a Word, Excel or PDF file without Python now says "Run /panda setup and Claude can help you install it", not developer instructions.
+
 ## 0.8.0 — 2026-10-09
 
 **Windows support**, and fixes from the directory's scan and from a first install on another machine.

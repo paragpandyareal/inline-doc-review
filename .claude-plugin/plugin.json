@@ -1,7 +1,7 @@
 {
   "name": "lazy-panda-panel",
   "displayName": "Lazy Panda Panel",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Review docs without lifting a paw. Your files open right where you’re working. Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG: highlight a part, comment, and Claude edits the real file.",
   "author": {
     "name": "Parag Pandya",

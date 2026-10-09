@@ -71,14 +71,18 @@ Markdown, Confluence, HTML, text, CSV and PNG files work straight away. For Word
 /panda setup
 ```
 
-This installs the small Python libraries the pane uses to read them (`python-docx`, `openpyxl` and `pypdf`). Every version is pinned and every download is checked against a hash. They go into their own folder, `.cache/lazy-panda-panel/venv` in your home folder, and nothing is installed into your system Python.
+**No Python on your computer?** `/panda setup` installs nothing by itself. It puts a request in your prompt box, asking Claude to help you install Python. If you want that, press Enter: Claude explains what it would install and asks before installing anything, then walks you through it. If you don't, clear the prompt box. Afterwards, restart Claude Code and run `/panda setup` again.
+
+Once Python is there, `/panda setup` installs the small Python libraries the pane uses (`python-docx`, `openpyxl` and `pypdf`). Every version is pinned and every download is checked against a hash. They go into their own folder, `.cache/lazy-panda-panel/venv` in your home folder, and nothing is installed into your system Python.
 
 **Requirements:**
 - Claude Code with mods (function-hook plugins).
-- For Word, Excel and PDF only: Python 3.9 or later.
+- For Word, Excel and PDF only: Python 3.9 or later. If it's missing, `/panda setup` offers to have Claude help you install it (see above). To do it yourself:
+  - **Windows:** install from [python.org](https://www.python.org/downloads/) and tick **Add python.exe to PATH**. The `python3` that Windows ships is only a link to the Microsoft Store.
+  - **macOS:** from python.org or Homebrew.
   - **Linux:** with `venv` (on Debian or Ubuntu: `sudo apt install python3-venv`).
-  - **macOS:** the `python3` from python.org or Homebrew.
-  - **Windows:** install Python from [python.org](https://www.python.org/downloads/) and tick **Add python.exe to PATH**. The `python3` that Windows ships is only a link to the Microsoft Store, so the pane uses the `py` launcher or `python` instead. Restart Claude Code after installing Python.
+
+  Restart Claude Code after installing Python.
 - Linux, macOS or Windows.
 - A terminal that shows images (kitty, Ghostty), but only for PNGs.
 
@@ -138,6 +142,7 @@ Lazy Panda Panel is a Claude Code *mod*. That means code that runs inside Claude
 | Downloads three Python packages and their dependencies from PyPI. Every version is pinned and every file is hash-checked (`scripts/requirements.txt`). | Only on `/panda setup` | Word, Excel and PDF support |
 | Writes sample files | Only on `/panda examples` | A demo |
 | Sends a prompt containing your comments and the quoted document text | Only when you press Send, or Enter after "Edit before sending" | So Claude applies your feedback |
+| Puts a help request in your prompt box, without sending it | Only when `/panda setup` finds no Python, or fails | So you can choose to have Claude help. You decide by pressing Enter or clearing it. |
 | Gives Claude two tools, `open_file` and `open_files`. They open files in the pane and return a one-line status, never the file's content. They open files in your working folder (not hidden folders), files Claude wrote this session, and files already open. `open_files` with `replace: true` also deletes unsent comments. | When Claude calls them | So "open the budget" works |
 | Reads Claude Code's `theme` setting | Session start | To pick light or dark colours |
 
@@ -180,7 +185,7 @@ The mod calls no tools itself and runs no slash commands itself.
 - a fixed header saying the excerpts are data;
 - for each comment, the file's path, the place in it, the quoted part of the file (at most 1,200 characters) and the comment you typed.
 
-It reads your prompt box (`$.prompt.read`) only so "Edit before sending" adds to what you typed rather than replacing it. What it reads from your files is shown in the pane. Only the excerpts you comment on go anywhere, and only in that prompt.
+It also uses `$.prompt.fill`, never `submit`, for a help request when `/panda setup` finds no Python or fails. The request is fixed text asking Claude to help install Python, or to explain the setup error. It quotes the error, fenced and marked as data. Claude is told to ask before installing or changing anything. Nothing is sent unless you press Enter. The mod itself never installs Python or anything else on your system. It reads your prompt box (`$.prompt.read`) only so these requests, and "Edit before sending", add to what you typed rather than replacing it. What it reads from your files is shown in the pane. Only the excerpts you comment on go anywhere, and only in that prompt.
 
 **What it writes.** The mod itself writes no files. The Python helper writes only:
 - the venv, on `/panda setup`;

@@ -7,7 +7,7 @@
       "name": "lazy-panda-panel",
       "source": "./",
       "description": "Open Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files in a pane, highlight a part, comment, and send the feedback to Claude.",
-      "version": "0.8.0"
+      "version": "0.8.1"
     }
   ]
 }

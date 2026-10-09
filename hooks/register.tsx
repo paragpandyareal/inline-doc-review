@@ -112,8 +112,39 @@ const drawnOn = (surface: RenderSurface): Drawn => drawnBy.get(surface) ?? { tot
 type Ran = Awaited<ReturnType<EngineInterface['process']['run']>>
 
 /** What to say when no command here runs Python 3. */
-const NO_PYTHON =
-  'Word, Excel and PDF files need Python 3, and none was found. Install it from python.org (on Windows, tick “Add python.exe to PATH”), restart Claude Code, then run /panda setup.'
+const NO_PYTHON = 'Word, Excel and PDF files need Python, which isn’t on this computer yet. Run /panda setup and Claude can help you install it.'
+
+/**
+ * The request /panda setup puts in the prompt box when there's no Python. The
+ * mod installs nothing: the person reads this, and only if they press Enter
+ * does Claude help, asking before it installs anything.
+ */
+const INSTALL_PYTHON_REQUEST = [
+  'Please help me install Python 3 so the Lazy Panda Panel can show Word, Excel and PDF files. I’m not technical, so walk me through it one step at a time, in plain language.',
+  '',
+  '- First work out which operating system this is. Then tell me what you’d install, where it comes from and roughly how big it is, and ask me before installing anything. If I say no, stop.',
+  '- Use the official Python from python.org, or this system’s usual installer for it: winget on Windows, Homebrew or the python.org installer on a Mac, and the python3 and python3-venv packages on Linux. On Windows, the python3 command may only be a link to the Microsoft Store; don’t rely on it.',
+  '- Make sure the python3, py or python command will work for new programs. Don’t change anything else on my computer.',
+  '- When it’s done, tell me to restart Claude Code (type /exit, then start it again the same way as before) and then run /panda setup. That installs the pane’s three small Python libraries.',
+].join('\n')
+
+/** What /panda setup puts in the prompt box when it failed: the error, for Claude to explain. */
+const setupFailedRequest = (error: string) =>
+  [
+    'The Lazy Panda Panel’s /panda setup failed with the error below. I’m not technical: please explain in plain language what went wrong, and walk me through fixing it one step at a time. Ask me before you install or change anything.',
+    '',
+    '<setup-error>',
+    // Control characters out, and the fence can't be closed from inside, as with document excerpts.
+    ...stripControls(error).replace(/<\/?setup-error/gi, '‹setup-error').split('\n').map(line => `> ${line}`),
+    '</setup-error>',
+  ].join('\n')
+
+/** Puts a request in the prompt box, after anything already typed. It is never sent: the person decides. */
+async function offerRequest($: EngineInterface, text: string): Promise<boolean> {
+  const box = await $.prompt.read()
+  const filled = await $.prompt.fill(box.text.trim() === '' ? { text, mode: 'replace' } : { text: `\n\n${text}`, mode: 'append' })
+  return filled.isFilled
+}
 
 /**
  * Runs the bundled helper, `scripts/extract.py`, in the plugin's folder, with
@@ -456,9 +487,7 @@ async function deliver($: EngineInterface, how: 'fill' | 'submit') {
   const ids = new Set(pending.map(c => c.id))
   if (how === 'fill') {
     // Whatever the person already typed stays; the comments go after it.
-    const box = await $.prompt.read()
-    const filled = await $.prompt.fill(box.text.trim() === '' ? { text, mode: 'replace' } : { text: `\n\n${text}`, mode: 'append' })
-    if (!filled.isFilled) {
+    if (!(await offerRequest($, text))) {
       $.ui.toast('Couldn’t reach the prompt box. Try “Send to Claude” instead.')
       return
     }
@@ -667,10 +696,25 @@ export const register: Register = on => {
     }
     if (args === 'setup') {
       const ran = await runHelper($, 'setup', 600_000)
-      if (!ran) return { text: NO_PYTHON, exitCode: 1 }
-      return ran.exitCode === 0
-        ? { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in .cache/lazy-panda-panel/venv in your home folder. Word, Excel and PDF files can be shown now.' }
-        : { text: `Setup failed:\n${ran.stderr.trim().slice(-1500)}`, exitCode: 1 }
+      if (!ran) {
+        const isOffered = await offerRequest($, INSTALL_PYTHON_REQUEST)
+        return {
+          text: isOffered
+            ? 'Word, Excel and PDF files need Python, which isn’t on this computer yet. Nothing has been installed.\n' +
+              'If you’d like Claude to help you install it, press Enter: the request is in your prompt box. Claude will ask before installing anything. If not, clear the prompt box.'
+            : 'Word, Excel and PDF files need Python, which isn’t on this computer yet. Ask Claude: “Please help me install Python for the Lazy Panda Panel.”',
+          exitCode: 1,
+        }
+      }
+      if (ran.exitCode === 0) {
+        return { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in .cache/lazy-panda-panel/venv in your home folder. Word, Excel and PDF files can be shown now.' }
+      }
+      const error = sanitizeLine(ran.stderr.trim().slice(-1500), 1500)
+      const isOffered = await offerRequest($, setupFailedRequest(ran.stderr.trim().slice(-1500)))
+      return {
+        text: `Setup failed: ${error}` + (isOffered ? '\nTo have Claude explain it and help you fix it, press Enter: the request is in your prompt box. If not, clear the prompt box.' : ''),
+        exitCode: 1,
+      }
     }
     if (args) {
       const path = typedPath(args)
