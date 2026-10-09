@@ -22,13 +22,13 @@ Please report it privately. On GitHub, open this repository's **Security** tab a
 | **Malformed Word, Excel or PDF files exploiting parsers** (lxml, openpyxl, pypdf) | Pinned versions, a 60-second timeout, and size limits. The helper runs as you, so open untrusted files with the care you'd give any document. |
 | **Claude opening files it shouldn't** | `open_file` and `open_files` only open files under the working folder (links resolved, no hidden folders), files Claude wrote this session, and files already open. Anything else needs you to run `/panda <path>`. The tools never return file content to Claude. |
 | **Supply chain at setup** | `/panda setup` installs from `scripts/requirements.txt`: every package pinned, every wheel hash-checked (`--require-hashes --only-binary=:all: --no-deps`), so no source builds. |
-| **Venv tampering** (`~/.cache/lazy-panda-panel/venv` is executed) | The helper only switches into the venv if it belongs to you (or root) and no other user can write to it. The venv is created with umask 022. To be sure, delete the folder and run setup again. |
+| **Venv tampering** (`~/.cache/lazy-panda-panel/venv` is executed) | The helper only switches into the venv if it belongs to you (or root) and no other user can write to it. The venv is created with umask 022. On Windows, which has no such owner and mode bits, it relies on your user profile folder being private to you, as it is by default. To be sure, delete the folder and run setup again. |
 | **Terminal escape injection** (a file that moves the cursor or rewrites the screen) | ANSI escapes and control characters are removed from all document text before drawing. |
 | **Scanning more than intended** | The post-command scan covers the working folder only, 3 levels deep with a 4,000-entry limit. It is skipped when the working folder is your home folder or `/`, and for subagents. |
 
 **Known limits:**
-- Before setup, the helper runs on your system `python3` and uses whatever packages are installed there.
-- `python3` is found through your `PATH`.
+- Before setup, the helper runs on your system Python and uses whatever packages are installed there.
+- Python is found through your `PATH`: `python3`, then `py -3` (the Windows launcher), then `python`, whichever first turns out to be Python 3.
 - Text inside a document can still try to persuade Claude. The fence makes this much harder but can't make it impossible.
 
 **Out of scope:** Claude Code itself, Anthropic's API, and what Claude does with a prompt you send.

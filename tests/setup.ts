@@ -27,7 +27,7 @@ export const PANE = {
  */
 export function begin(
   on: On,
-  options: { mtime?: (path: string) => number; size?: number; exists?: (path: string) => boolean; isGone?: () => boolean; box?: string } = {},
+  options: { mtime?: (path: string) => number; size?: number; exists?: (path: string) => boolean; isGone?: () => boolean; box?: string; realPath?: (path: string) => string } = {},
 ) {
   mock.store(on)
   mock.clock(on)
@@ -44,7 +44,7 @@ export function begin(
   on('fs.stat', (_, e) => {
     const path = (e as { path: string }).path
     if (options.isGone?.()) throw new Error(`ENOENT: ${path}`)
-    return { value: { kind: 'file', size: options.size ?? 100, mtimeMs: options.mtime?.(path) ?? 1000, isLink: false, realPath: path } }
+    return { value: { kind: 'file', size: options.size ?? 100, mtimeMs: options.mtime?.(path) ?? 1000, isLink: false, realPath: options.realPath?.(path) ?? path } }
   })
 }
 

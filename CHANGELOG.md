@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.0 — 2026-10-09
+
+**Windows support**, and fixes from the directory's scan and from a first install on another machine.
+
+- **Windows:**
+  - Paths with drive letters and backslashes work. Claude's `open_file` and `open_files` open files in a Windows working folder; before, they were refused.
+  - Paths that differ only in letter case count as the same, as Windows treats them.
+  - The scan for new files is skipped at a drive root and in `C:\Users\<name>`.
+  - Python is found as `python3`, then `py -3`, then `python`. On Windows, `python3` is often only the Microsoft Store placeholder.
+  - The venv is found in `Scripts\python.exe`.
+  - The helper waits for its venv copy rather than calling `execv`, which on Windows lost the output.
+  - The helper reads and writes UTF-8 whatever the system code page.
+- **`/panda` always answers.** If it fails, it says why. Before, it could show Claude Code's "no command.run hook answered it" (seen on `/panda examples` without Python).
+- **No Python:** opening a Word, Excel or PDF file, `/panda setup` and `/panda examples` say how to install Python.
+- **One helper command.** The mod runs only `scripts/extract.py`, with its task on standard input. `/panda examples` goes through it too.
+- **README:**
+  - Restart Claude Code (or `/reload-plugins`) after installing.
+  - Windows requirements.
+  - `~` isn't expanded in `/panda` paths.
+  - The hooks are only `Bash`, `Write`, `Edit` and `NotebookEdit`, not every tool call.
+  - A fuller credentials statement, including what the theme read sees.
+  - The uninstall steps cover the marketplace too.
+- The project's internal working notes (handover, review plan and review reports) are no longer shipped with the plugin.
+
 ## 0.7.0 — 2026-10-09
 
 **Renamed: Inline Doc Review is now Lazy Panda Panel.** The new name is distinctive, so it won't be confused with generic tools.
@@ -19,7 +43,7 @@
 
 ## 0.6.0 — 2026-10-09
 
-Security, reliability and clean-up, after independent security, QA, code-quality, transparency and simplification reviews (reports in `docs/reviews/`).
+Security, reliability and clean-up, after independent security, QA, code-quality, transparency and simplification reviews.
 
 **Comments**
 - Comments are tied to the text they quote, not row numbers. When the file changes, each waiting comment finds its text again, even if it moved. If the text was rewritten, it's marked **⚠ text changed**, and the prompt tells Claude.

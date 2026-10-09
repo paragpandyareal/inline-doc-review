@@ -9,7 +9,7 @@ The plugin reads the files you open in its pane, and files Claude writes in your
 
 ## What it stores
 - The auto-open on/off setting, in Claude Code's own plugin store on your computer.
-- If you run `/panda setup`, a Python environment in `~/.cache/lazy-panda-panel`. It contains software packages, not your data.
+- If you run `/panda setup`, a Python environment in `.cache/lazy-panda-panel` in your home folder. It contains software packages, not your data.
 
 Your documents and comments are not saved anywhere by the plugin. They last for the session only.
 

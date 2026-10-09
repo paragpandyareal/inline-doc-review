@@ -34,7 +34,7 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/format.ts` | hooks environment | Shared reader helpers: inline Markdown, table layout, gaps |
 | `hooks/panda.ts` | hooks environment | The panda: pixel art drawn with half blocks (`▀▄`), two pixels per character, so it shows in any terminal |
 | `hooks/palette.ts` | hooks environment | Colours by `/config` theme, and file-type badges |
-| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. It switches into `~/.cache/lazy-panda-panel/venv` once `/panda setup` has made it, but only if no one else can write to it. |
+| `scripts/extract.py` | a Python process | The one helper the mod runs (`runHelper`: `python3`, else `py -3`, else `python`, so it works on Windows). It takes its task on standard input: `xlsx`/`docx`/`pdf` and a path, `examples` and a folder (which runs `make_examples.py`), or `setup`. Reads `.docx`, `.xlsx` and `.pdf` into JSON. It switches into `~/.cache/lazy-panda-panel/venv` once `/panda setup` has made it, but only if no one else can write to it. |
 | `scripts/formulas.py` | a Python process | A small, safe formula calculator for formulas with no saved result (files written by openpyxl never have one). It reads formulas and never runs them as code. |
 | `scripts/requirements.txt` | — | The setup packages, pinned and hash-locked |
 | `types/index.d.ts` | — | The state contract. Every `$.state` value and its type. |
@@ -53,6 +53,8 @@ Every file becomes one of these:
 - **`error`:** a message the pane shows instead.
 
 **Parsed documents are not kept in `$.state`.** A workbook can be far bigger than a state value may be (about 4 million characters). They live in a small cache in `register.tsx`, keyed by path. `$.state` holds only `open: { path, version }`. Each new read bumps `version`, and that redraws the pane.
+
+**Paths are kept in one form.** `normalizePath` (in `model.ts`) writes every path with forward slashes and no `.` or `..`. Windows paths keep their drive in capitals (`C:/Users/…`). Every path the mod holds goes through it: the working folder, tool arguments, `/panda` arguments, and paths from the helper and from `$.fs`. So `C:\a\b.md` and `C:/a/b.md` are one tab, and the working-folder check compares Windows paths without case, as Windows does.
 
 **Layout is cached** by path, version, width and view. A key press or scroll only slices the visible lines; it doesn't wrap the whole document again. Scrolling geometry is kept per surface (terminal or desktop).
 

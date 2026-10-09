@@ -19,6 +19,7 @@ import {
   feedbackPrompt,
   formatNumber,
   hasHeader,
+  isAbsolutePath,
   layoutTables,
   normalizePath,
   noteLabel,
@@ -76,9 +77,12 @@ type GridDoc = Extract<Doc, { kind: 'grid' }>
 
 /** What this session's hooks share; set again on each load by session.start. */
 const session = {
-  cwd: '',
+  /** The working folder, as normalizePath writes it. */
+  folder: '',
   /** The working folder with links resolved: the model's tools open files under it. */
-  realCwd: '',
+  realFolder: '',
+  /** The command that runs the Python helper here, once one has worked (Windows has `py` and `python`, not `python3`). */
+  python: null as 'python3' | 'py' | 'python' | null,
   theme: 'dark',
   /** Supported files written this turn, for auto-open; and this session, which the tools may open wherever they are. */
   turnFiles: new Set<string>(),
@@ -105,6 +109,38 @@ const drawnOn = (surface: RenderSurface): Drawn => drawnBy.get(surface) ?? { tot
 
 // ── Reading files ──
 
+type Ran = Awaited<ReturnType<EngineInterface['process']['run']>>
+
+/** What to say when no command here runs Python 3. */
+const NO_PYTHON =
+  'Word, Excel and PDF files need Python 3, and none was found. Install it from python.org (on Windows, tick “Add python.exe to PATH”), restart Claude Code, then run /panda setup.'
+
+/**
+ * Runs the bundled helper, `scripts/extract.py`, in the plugin's folder, with
+ * `input` on standard input: what to do on the first line, then its path.
+ * Each command is fixed text. Windows has `py` and `python` rather than
+ * `python3`, which there may be only the Microsoft Store's placeholder, so
+ * each is tried in turn until one is Python 3. Null when none is.
+ */
+async function runHelper($: EngineInterface, input: string, timeoutMs: number): Promise<Ran | null> {
+  const attempt = async (python: 'python3' | 'py' | 'python'): Promise<Ran | null> => {
+    let ran: Ran
+    try {
+      if (python === 'python3') ran = await $.process.run(['python3', './scripts/extract.py'], { cwd: $.plugin.root, stdin: input, timeoutMs })
+      else if (python === 'py') ran = await $.process.run(['py', '-3', './scripts/extract.py'], { cwd: $.plugin.root, stdin: input, timeoutMs })
+      else ran = await $.process.run(['python', './scripts/extract.py'], { cwd: $.plugin.root, stdin: input, timeoutMs })
+    } catch {
+      return null
+    }
+    // The helper always prints something, or fails with a Python traceback; anything else is not Python 3 (9009 is the Store placeholder).
+    const isPython3 = ran.exitCode !== 9009 && (ran.exitCode === 0 || ran.stdout.trim() !== '' || ran.stderr.includes('Traceback'))
+    if (isPython3) session.python = python
+    return isPython3 ? ran : null
+  }
+  if (session.python) return attempt(session.python)
+  return (await attempt('python3')) ?? (await attempt('py')) ?? (await attempt('python'))
+}
+
 async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise<Doc> {
   const ext = extOf(path)
   let size: number
@@ -123,14 +159,8 @@ async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise
       return { kind: 'image', path, png: base64, width: word(16) || 1, height: word(20) || 1 }
     }
     if (DOC_KINDS.includes(ext)) {
-      // Each command is fixed text, run in the plugin's folder; the document's path goes on standard input.
-      const init = { cwd: $.plugin.root, stdin: path, timeoutMs: 60_000 }
-      const ran =
-        ext === 'xlsx'
-          ? await $.process.run(['python3', './scripts/extract.py', 'xlsx'], init)
-          : ext === 'docx'
-            ? await $.process.run(['python3', './scripts/extract.py', 'docx'], init)
-            : await $.process.run(['python3', './scripts/extract.py', 'pdf'], init)
+      const ran = await runHelper($, `${ext}\n${path}`, 60_000)
+      if (!ran) return { kind: 'error', path, message: NO_PYTHON }
       if (ran.exitCode !== 0) return { kind: 'error', path, message: sanitizeLine((ran.stderr || ran.stdout).trim().split('\n').slice(-3).join(' '), 600) }
       const parsed = JSON.parse(ran.stdout) as Doc
       // The helper cleans what it reads; this pass makes sure, since a cell or row can hold anything.
@@ -273,10 +303,13 @@ async function openPane($: EngineInterface) {
 
 // ── Paths and watching ──
 
-/** A home folder (/home/<name>, /Users/<name>, /root) or the root: too broad to scan. */
-const isHomeOrRoot = (dir: string) => dir === '' || dir === '/' || /^\/(?:home|Users)\/[^/]+\/?$|^\/root\/?$/.test(dir)
+/** A root (`/`, `C:/`) or a home folder (/home/<name>, /Users/<name>, /root, C:/Users/<name>): too broad to scan. */
+const isHomeOrRoot = (dir: string) => /^(?:[A-Z]:)?\/?$|^(?:[A-Z]:)?\/(?:home|Users)\/[^/]+\/?$|^\/root\/?$/i.test(dir)
 
-const resolvePath = (path: string) => normalizePath(path.startsWith('/') ? path : `${session.cwd}/${path}`)
+const resolvePath = (path: string) => normalizePath(isAbsolutePath(path) ? path : `${session.folder}/${path}`)
+
+/** Windows paths compare without case, as Windows does. */
+const sameCase = (path: string) => (/^[A-Z]:\//.test(path) ? path.toLowerCase() : path)
 
 /** What a person types after /panda: surrounding quotes stripped. */
 function typedPath(text: string): string {
@@ -291,11 +324,11 @@ function typedPath(text: string): string {
  */
 async function isAllowed($: EngineInterface, path: string): Promise<boolean> {
   if (session.claudeWrote.has(path) || (await read($, files)).includes(path)) return true
-  const root = session.realCwd
-  if (root === '' || root === '/') return false
+  const root = sameCase(session.realFolder)
+  if (/^(?:[a-z]:)?\/?$/.test(root)) return false
   let real: string
   try {
-    real = (await $.fs.stat(path, { resolve: true })).realPath ?? path
+    real = sameCase(normalizePath((await $.fs.stat(path, { resolve: true })).realPath ?? path))
   } catch {
     return false
   }
@@ -535,11 +568,13 @@ async function afterEdit<R extends { deny?: unknown; isError?: unknown }>($: Eng
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    session.cwd = e.cwd
-    session.realCwd = await $.fs
-      .stat(e.cwd, { resolve: true })
-      .then(st => st.realPath ?? e.cwd)
-      .catch(() => e.cwd)
+    session.folder = normalizePath(e.cwd)
+    session.realFolder = normalizePath(
+      await $.fs
+        .stat(e.cwd, { resolve: true })
+        .then(st => st.realPath ?? e.cwd)
+        .catch(() => e.cwd),
+    )
     const started = await next(e)
     // A reload starts this module afresh: read the open file again, and let
     // go of sends whose turn this module can no longer follow.
@@ -550,6 +585,7 @@ export const register: Register = on => {
       await update($, open, old => ({ ...old, version: old.version + 1 }))
     }
     await update($, comments, old => old.filter(c => c.status !== 'sent'))
+    // Only the theme row is kept; the other rows (other plugins' settings among them) are dropped here.
     const theme = (await $.config.list().catch(() => [])).find(row => row.key === 'theme')
     session.theme = typeof theme?.value === 'string' ? theme.value : 'dark'
     // Watch the listed files: whatever changes one, the pane rereads it within a couple of seconds.
@@ -612,8 +648,12 @@ export const register: Register = on => {
     if (args === 'examples' || args.startsWith('examples ')) {
       // The bundled script writes the samples: it copies the text ones and generates the Excel and Word ones.
       const folder = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
-      const ran = await $.process.run(['python3', './scripts/make_examples.py'], { cwd: $.plugin.root, stdin: folder, timeoutMs: 120_000 })
-      const written = ran.stdout.trim().split('\n').filter(line => line.startsWith('/'))
+      const ran = await runHelper($, `examples\n${folder}`, 120_000)
+      if (!ran) return { text: `Could not write the samples. ${NO_PYTHON}`, exitCode: 1 }
+      const written = ran.stdout
+        .split(/\r?\n/)
+        .filter(isAbsolutePath)
+        .map(normalizePath)
       if (written.length === 0) return { text: `Could not write the samples: ${sanitizeLine(ran.stderr.trim().slice(-400))}`, exitCode: 1 }
       await update($, files, () => written)
       await update($, comments, old => old.filter(c => c.status === 'sent'))
@@ -626,9 +666,10 @@ export const register: Register = on => {
       }
     }
     if (args === 'setup') {
-      const ran = await $.process.run(['python3', './scripts/extract.py', 'setup'], { cwd: $.plugin.root, timeoutMs: 600_000 })
+      const ran = await runHelper($, 'setup', 600_000)
+      if (!ran) return { text: NO_PYTHON, exitCode: 1 }
       return ran.exitCode === 0
-        ? { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in ~/.cache/lazy-panda-panel/venv. Word, Excel and PDF files can be shown now.' }
+        ? { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in .cache/lazy-panda-panel/venv in your home folder. Word, Excel and PDF files can be shown now.' }
         : { text: `Setup failed:\n${ran.stderr.trim().slice(-1500)}`, exitCode: 1 }
     }
     if (args) {
@@ -642,7 +683,11 @@ export const register: Register = on => {
     }
     const opened = await openPane($)
     return { text: opened.isPlaced ? 'Review pane opened.' : 'Review pane is waiting for room: widen the terminal.' }
-  })
+  }).catch(($, e, next) => ({
+    // Whatever went wrong, /panda answers with it, rather than Claude Code's note that no hook answered.
+    text: `/panda ${e.args.trim()} failed: ${sanitizeLine(String((next.error as { message?: unknown } | undefined)?.message ?? next.error ?? 'unknown error'), 400)}`,
+    exitCode: 1,
+  }))
 
   on('tool.call', { tool: 'mcp__lazy-panda-panel__open_file' }, async ($, e) => {
     // A live session puts the arguments on the event; the test kit under `input`.
@@ -708,10 +753,10 @@ export const register: Register = on => {
     // Listed files first: a direct check, so an edit made by a script shows at once.
     for (const path of await refreshChanged($)) session.turnFiles.add(path)
     // Then new files in the working folder; never a home folder or the root, nor for a subagent.
-    if (e.agentId === undefined && !isHomeOrRoot(session.cwd)) {
+    if (e.agentId === undefined && !isHomeOrRoot(session.folder)) {
       const listed = new Set(await read($, files))
       const found: string[] = []
-      await scan($, session.cwd, since, 3, found, { left: 4000 })
+      await scan($, session.folder, since, 3, found, { left: 4000 })
       for (const path of found.filter(one => !listed.has(one)).slice(0, 20)) await noteFile($, path)
     }
     return ran

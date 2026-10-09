@@ -4,7 +4,11 @@
 """Reads a document for the Lazy Panda Panel and prints it as JSON.
 
     extract.py docx|pdf|xlsx <path>   one document, read only
+    extract.py examples <folder>       writes the samples (make_examples.py)
     extract.py setup                   makes the venv the pane reads with
+
+With no arguments it reads them from standard input, one per line (how the
+pane sends them).
 
 The libraries live in a venv of their own (~/.cache/lazy-panda-panel/venv),
 installed from requirements.txt with exact versions and sha256 hashes, so
@@ -23,7 +27,9 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 VENV = os.path.join(os.path.expanduser("~"), ".cache", "lazy-panda-panel", "venv")
-VENV_PY = os.path.join(VENV, "bin", "python")
+IS_WINDOWS = os.name == "nt"
+VENV_BIN = os.path.join(VENV, "Scripts" if IS_WINDOWS else "bin")
+VENV_PY = os.path.join(VENV_BIN, "python.exe" if IS_WINDOWS else "python")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
 
 MAX_ROWS = 4000
@@ -42,24 +48,33 @@ def clean(text):
 
 
 def is_trusted(path):
-    """Owned by this user (or root), and writable by no one else (the user's own group aside): safe to run from."""
+    """Owned by this user (or root), and writable by no one else (the user's own group aside): safe to run from.
+
+    Windows has no owner or mode bits here; its user profile folder is private to the user by default."""
     try:
         st = os.stat(path)
     except OSError:
         return False
+    if IS_WINDOWS:
+        return True
     group_ok = not st.st_mode & 0o020 or st.st_gid in (0, os.getgid())
     return st.st_uid in (0, os.getuid()) and not st.st_mode & 0o002 and group_ok
 
 
 def venv_is_trusted():
-    return all(is_trusted(p) for p in (VENV, os.path.join(VENV, "bin"), os.path.realpath(VENV_PY)))
+    return all(is_trusted(p) for p in (VENV, VENV_BIN, os.path.realpath(VENV_PY)))
 
 
-def reexec_in_venv():
+def reexec_in_venv(args):
     # Compare the environment, not the interpreter: a venv's python links to the system one.
     # Only into a venv no one else can write to: otherwise read with the system Python.
     if os.path.exists(VENV_PY) and os.path.realpath(sys.prefix) != os.path.realpath(VENV) and venv_is_trusted():
-        os.execv(VENV_PY, [VENV_PY, *sys.argv])
+        argv = [VENV_PY, os.path.abspath(__file__), *args]
+        if IS_WINDOWS:
+            # Windows has no exec: the parent would exit at once and its output be lost, so wait for the child.
+            sys.stdout.flush()
+            sys.exit(subprocess.run(argv).returncode)
+        os.execv(VENV_PY, argv)
 
 
 def setup():
@@ -410,17 +425,23 @@ def xlsx_sheets(path):
 
 
 def main():
-    if sys.argv[1:2] == ["setup"]:
+    # UTF-8 both ways, whatever the system's code page: paths and cells can hold any character.
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")
+    # The task and its path come as arguments, or on standard input, one per line (how the pane sends them).
+    args = sys.argv[1:] or [line.strip() for line in sys.stdin.read().strip().split("\n", 1)]
+    if args[:1] == ["setup"]:
         print(json.dumps(setup()))
         return
-    reexec_in_venv()
+    reexec_in_venv(args)
     sys.path.insert(0, HERE)
-    # The document's path comes as the second argument, or on standard input (how the pane sends it).
-    if len(sys.argv) not in (2, 3) or sys.argv[1] not in ("docx", "pdf", "xlsx"):
-        print(json.dumps({"kind": "error", "message": "Usage: extract.py docx|pdf|xlsx [path] (or the path on standard input)"}))
+    if len(args) == 2 and args[0] == "examples":
+        import make_examples
+        sys.exit(make_examples.write(args[1]))
+    if len(args) != 2 or args[0] not in ("docx", "pdf", "xlsx"):
+        print(json.dumps({"kind": "error", "message": "Usage: extract.py docx|pdf|xlsx|examples <path> (or on standard input, one per line)"}))
         return
-    kind = sys.argv[1]
-    path = sys.argv[2] if len(sys.argv) == 3 else sys.stdin.read().strip()
+    kind, path = args
     try:
         doc = {"docx": docx_rows, "pdf": pdf_rows, "xlsx": xlsx_sheets}[kind](path)
     except Exception as error:  # a corrupt, locked or oversized file: say so in the pane

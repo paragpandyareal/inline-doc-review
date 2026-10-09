@@ -16,16 +16,24 @@ import type { LineRow } from './viewer'
 type LinesDoc = Extract<Doc, { kind: 'lines' }>
 type GridDoc = Extract<Doc, { kind: 'grid' }>
 
-/** `/a/./b/../c` → `/a/c`, `//` → `/`. */
+/**
+ * `/a/./b/../c` → `/a/c`, `//` → `/`. Windows paths keep their drive, in
+ * capitals, with forward slashes: `c:\a\..\b` → `C:/b`; `\\host\share\x` → `//host/share/x`.
+ */
 export function normalizePath(path: string): string {
+  const slashed = path.replace(/\\/g, '/')
+  const drive = /^[A-Za-z]:(?=\/|$)/.exec(slashed)?.[0].toUpperCase() ?? (path.startsWith('\\\\') ? '/' : '')
   const out: string[] = []
-  for (const part of path.split('/')) {
+  for (const part of slashed.slice(drive === '/' ? 0 : drive.length).split('/')) {
     if (part === '' || part === '.') continue
     if (part === '..') out.pop()
     else out.push(part)
   }
-  return `/${out.join('/')}`
+  return `${drive}/${out.join('/')}`
 }
+
+/** An absolute path: `/…`, `C:\…` or `C:/…`, or a Windows network path `\\host\share\…`. */
+export const isAbsolutePath = (path: string) => /^(?:[\\/]|[A-Za-z]:[\\/])/.test(path)
 
 /** Cuts spans to a width, ending with an ellipsis when something is left out. */
 export function clip(spans: Span[], width: number): Span[] {

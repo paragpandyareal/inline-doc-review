@@ -63,18 +63,23 @@ In Claude Code (terminal), type:
 /plugin install lazy-panda-panel --marketplace paragpandyareal/lazy-panda-panel
 ```
 
-Answer `y` to add the marketplace and pick a scope. Then, once, run:
+Answer `y` to add the marketplace and pick a scope. Then **restart Claude Code** (or run `/reload-plugins`): a newly installed plugin loads only then, and `/panda` doesn't exist until it does.
+
+Markdown, Confluence, HTML, text, CSV and PNG files work straight away. For Word, Excel and PDF files, run this once:
 
 ```
 /panda setup
 ```
 
-This installs the small Python libraries the pane uses to read Word, Excel and PDF files (`python-docx`, `openpyxl` and `pypdf`). Every version is pinned and every download is checked against a hash. They go into their own folder, `~/.cache/lazy-panda-panel/venv`, and nothing is installed into your system Python. Markdown, Confluence, HTML, text and PNG files need nothing extra.
+This installs the small Python libraries the pane uses to read them (`python-docx`, `openpyxl` and `pypdf`). Every version is pinned and every download is checked against a hash. They go into their own folder, `.cache/lazy-panda-panel/venv` in your home folder, and nothing is installed into your system Python.
 
 **Requirements:**
 - Claude Code with mods (function-hook plugins).
-- Python 3.9 or later with `venv` (on Debian or Ubuntu: `sudo apt install python3-venv`).
-- Linux or macOS.
+- For Word, Excel and PDF only: Python 3.9 or later.
+  - **Linux:** with `venv` (on Debian or Ubuntu: `sudo apt install python3-venv`).
+  - **macOS:** the `python3` from python.org or Homebrew.
+  - **Windows:** install Python from [python.org](https://www.python.org/downloads/) and tick **Add python.exe to PATH**. The `python3` that Windows ships is only a link to the Microsoft Store, so the pane uses the `py` launcher or `python` instead. Restart Claude Code after installing Python.
+- Linux, macOS or Windows.
 - A terminal that shows images (kitty, Ghostty), but only for PNGs.
 
 It works offline except for `/panda setup`.
@@ -83,7 +88,7 @@ It works offline except for `/panda setup`.
 
 | To… | Do this |
 |---|---|
-| Open a file | `/panda path/to/file.xlsx`, or ask Claude "open the budget". Claude's `open_file` tool opens files in your working folder and files it wrote. For anything else, use the command. |
+| Open a file | `/panda path/to/file.xlsx` (relative to the working folder, or a full path; `~` isn't expanded), or ask Claude "open the budget". Claude's `open_file` tool opens files in your working folder and files it wrote. For anything else, use the command. |
 | Open the pane | `/panda` |
 | Have files open by themselves | Click **○ Auto-open** at the top right, or run `/panda auto on`. When Claude finishes a turn that produced 1–5 Word, PDF, PNG, HTML, Markdown or Confluence files, the pane opens on them. It's off until you turn it on. |
 | Comment | Click or drag over cells, lines or paragraphs. Type in **Comment on…** and press Enter. Repeat for as many places as you like. |
@@ -124,11 +129,11 @@ Lazy Panda Panel is a Claude Code *mod*. That means code that runs inside Claude
 
 | It… | When | Why |
 |---|---|---|
-| Sees every tool call Claude makes. It never blocks, approves or changes one. | Always | To notice files Claude writes |
+| Sees Claude's `Bash`, `Write`, `Edit` and `NotebookEdit` tool calls, after they've run. It never blocks, approves or changes one. | Always | To notice files Claude writes |
 | Lists your working folder, 3 levels deep, up to 4,000 entries. It skips `node_modules`, `.git`, hidden folders and similar. It doesn't do this when the working folder is your home folder or `/`, or for subagents. | After each shell command Claude runs | To find documents a script made |
 | Checks the modification time of the files listed in the pane (at most 30) | Every 2 seconds | To refresh the pane when a file changes |
 | Reads the files shown in the pane. Text files over 10 MB and images over 2 MB are refused. | When one is opened or changes | To display it |
-| Runs `python3 scripts/extract.py` on Word, Excel and PDF files. Files over 50 MB (300 MB unzipped) are refused. | When one is shown | To read them |
+| Runs the bundled `scripts/extract.py` with Python on Word, Excel and PDF files. Files over 50 MB (300 MB unzipped) are refused. | When one is shown | To read them |
 | Calculates Excel formulas that have no saved result, with its own small calculator (`scripts/formulas.py`). It reads formulas and never runs them as code. Unknown functions are left uncalculated. | When an `.xlsx` is shown | To show values |
 | Downloads three Python packages and their dependencies from PyPI. Every version is pinned and every file is hash-checked (`scripts/requirements.txt`). | Only on `/panda setup` | Word, Excel and PDF support |
 | Writes sample files | Only on `/panda examples` | A demo |
@@ -155,13 +160,19 @@ This section is for anyone reviewing the code, including Anthropic's directory r
 | `turn.start`, `turn.complete` | Note when Claude's turn starts and ends, to clear the "Claude is working" spinner and for auto-open |
 | `ui.render`, `ui.message` | Draw the pane and handle clicks and keys, for this plugin's own pane only |
 
-**Programs it runs.** Only `python3`, and only these commands, each written as fixed text and run in the plugin's own folder:
+**Programs it runs.** Only Python, running the plugin's own `scripts/extract.py`, in the plugin's own folder. The command is one of three, each written as fixed text in `runHelper`:
 
-| Command | When | What it does |
+- `python3 ./scripts/extract.py`
+- `py -3 ./scripts/extract.py` (the Windows Python launcher)
+- `python ./scripts/extract.py`
+
+It tries them in that order until one is Python 3, then keeps using that one. Windows has no real `python3`: the one it ships only points to the Microsoft Store. What the helper should do arrives on standard input, never as part of the command:
+
+| Standard input | When | What the helper does |
 |---|---|---|
-| `python3 ./scripts/extract.py xlsx`, `… docx`, `… pdf` | When you open a Word, Excel or PDF file | Reads that file and prints its content as JSON for the pane. The file's path goes in on standard input. Nothing leaves your machine. |
-| `python3 ./scripts/extract.py setup` | Only when you run `/panda setup` | Creates `~/.cache/lazy-panda-panel/venv` and runs `pip install --require-hashes --only-binary=:all: --no-deps -r scripts/requirements.txt`. That downloads the pinned, hash-checked packages from PyPI (pypi.org and files.pythonhosted.org). **This is the only network access.** |
-| `python3 ./scripts/make_examples.py` | Only when you run `/panda examples` | Writes sample files into the folder you name (path on standard input): it copies the text samples from `examples/` and generates the Excel and Word ones |
+| `xlsx`, `docx` or `pdf`, then the file's path | When you open a Word, Excel or PDF file | Reads that file and prints its content as JSON for the pane. Nothing leaves your machine. |
+| `setup` | Only when you run `/panda setup` | Creates the venv in `.cache/lazy-panda-panel/venv` in your home folder and runs `pip install --require-hashes --only-binary=:all: --no-deps -r scripts/requirements.txt`. That downloads the pinned, hash-checked packages from PyPI (pypi.org and files.pythonhosted.org). **This is the only network access.** |
+| `examples`, then a folder | Only when you run `/panda examples` | Writes sample files into that folder with `scripts/make_examples.py`: it copies the text samples from `examples/` and generates the Excel and Word ones |
 
 The mod calls no tools itself and runs no slash commands itself.
 
@@ -177,7 +188,7 @@ It reads your prompt box (`$.prompt.read`) only so "Edit before sending" adds to
 
 The auto-open setting is kept in Claude Code's own plugin store. Nothing writes build, start-up, settings or instruction files.
 
-**Credentials.** It reads no environment variables, tokens or keys.
+**Credentials.** The mod reads no credentials of any kind: no API keys, tokens, passwords, cookies, SSH keys or `.env` files, and no environment variables. It has no `user_config` because it needs no secrets. Where the code says "key" (`hooks/register.tsx`, `hooks/viewer.tsx`), it means a keyboard key or a store key, such as the arrow keys or the auto-open setting. The Python helper finds your home folder only to locate its own venv. To pick light or dark colours it calls `$.config.list()` once at start. That is Claude Code's documented way to read the `theme` setting, and it returns every `/config` row, including other plugins' settings. The mod keeps only the `theme` row's value and never stores, logs or sends any row.
 
 **The `tests/` folder.** This holds the automated tests, run with `claude plugin test`. Claude Code never loads them when you use the plugin. To simulate Claude Code, the tests' mock hooks stand in for `tool.call`, `process.run`, `tool.register` and other events, and the tests call tools and the `/panda` command themselves.
 
@@ -197,7 +208,10 @@ Full policy: [Privacy policy](https://github.com/paragpandyareal/lazy-panda-pane
 ## Uninstall
 
 1. Run `/plugin uninstall lazy-panda-panel`.
-2. Run `rm -rf ~/.cache/lazy-panda-panel` to remove the Python venv. Uninstalling doesn't remove it.
+2. Run `/plugin marketplace remove lazy-panda-panel`. Claude Code keeps the marketplace, and its downloaded copy of the plugin, so you can reinstall later. This removes both.
+3. If you ran `/panda setup`, delete the Python venv: `rm -rf ~/.cache/lazy-panda-panel` (Windows: `rmdir /s %USERPROFILE%\.cache\lazy-panda-panel`).
+
+The mod writes nothing else. The plugin cache, the marketplace and the enable/disable setting all belong to Claude Code's plugin manager, not to this mod.
 3. Delete any `lazy-panda-panel-examples` folders you made.
 
 If you used it under an earlier name (`inline-doc-review` or `review-pane`), uninstall that too, and delete `~/.cache/inline-doc-review`.
@@ -213,7 +227,6 @@ This writes a sample of each type into `./lazy-panda-panel-examples` and opens t
 ## Learn more
 
 - [How it works](docs/HOW-IT-WORKS.md): the architecture, for anyone changing the code
-- [Project handover](docs/HANDOVER.md): history, design decisions and what's next
 - [Changelog](CHANGELOG.md)
 
 ## License
