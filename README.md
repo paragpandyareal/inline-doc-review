@@ -1,6 +1,6 @@
 # Lazy Panda Panel for Claude Code
 
-> *Point at it, say what's wrong, and Claude edits the real file. Lazy, but it works.* 🐼
+> *Review docs without lifting a paw. Your files open right where you’re working.* 🐼
 
 **Review the spreadsheets, documents and pages Claude makes without leaving Claude Code.** Highlight cells, lines or paragraphs, comment on them, and send your comments to Claude, which edits the file itself. The pane never edits anything.
 

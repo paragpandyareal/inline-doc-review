@@ -1,7 +1,7 @@
 {
   "name": "lazy-panda-panel",
   "owner": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
-  "metadata": { "description": "Point at it, say what’s wrong, and Claude edits the real file. Lazy, but it works. Comment on the files Claude makes, and Claude applies the feedback." },
+  "metadata": { "description": "Review docs without lifting a paw. Your files open right where you’re working. Comment on the files Claude makes, and Claude applies the feedback." },
   "plugins": [
     {
       "name": "lazy-panda-panel",

@@ -2,7 +2,7 @@
   "name": "lazy-panda-panel",
   "displayName": "Lazy Panda Panel",
   "version": "0.7.0",
-  "description": "Point at it, say what’s wrong, and Claude edits the real file. Lazy, but it works. Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files open in a pane inside Claude Code.",
+  "description": "Review docs without lifting a paw. Your files open right where you’re working. Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files open in a pane inside Claude Code.",
   "author": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
   "homepage": "https://github.com/paragpandyareal/lazy-panda-panel",
   "repository": "https://github.com/paragpandyareal/lazy-panda-panel",
