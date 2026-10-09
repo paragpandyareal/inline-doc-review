@@ -1,5 +1,7 @@
 // QA: control characters in documents must not make the viewer refuse its tree.
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
+
+import { begin, start } from './setup'
 
 const PANE = { component: 'Pane', requestId: 'review', props: { title: 'Review', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 
@@ -16,10 +18,9 @@ const CASES: [string, string][] = [
 
 for (const [path, text] of CASES) {
   test(`control characters: ${path} draws`, async ($, on) => {
-    mock.store(on)
-    on('fs.exists', () => ({ value: true }))
-    on('ui.open', () => ({ value: { isPlaced: true } }))
+    begin(on)
     on('fs.read', () => ({ value: text }))
+    await start($)
     await $.command.run({ command: 'inline-review', args: path })
     let error = ''
     try {
@@ -34,11 +35,10 @@ for (const [path, text] of CASES) {
 }
 
 test('control characters: a grid cell with a tab / CR / ESC draws', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  begin(on)
   const doc = { kind: 'grid', sheets: [{ name: 'S', cols: ['A', 'B'], rows: [[{ v: 'H' }, { v: 'I' }], [{ v: 'a\tb' }, { v: 'c\r\nd' }], [{ v: 'x\u001b[1my' }, { v: 'z' }]], isCut: false }] }
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(doc), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/c.xlsx' })
   let error = ''
   try {

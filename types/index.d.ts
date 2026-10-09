@@ -8,7 +8,7 @@ export type Span = { t: string; b?: 1; i?: 1; c?: 1; l?: 1; s?: 1; d?: 1 }
  */
 export type RowStyle =
   | 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'quote' | 'code' | 'th' | 'td' | 'panel' | 'rule' | 'space'
-  | 'heading' | 'table' | null
+  | null
 
 export type Tone = 'info' | 'note' | 'warning' | 'error' | 'success' | 'tip'
 
@@ -21,8 +21,6 @@ export type DocRow = {
   style?: RowStyle
   /** What one row is called, for a range's label: "line", "paragraph", "block". */
   unit?: string
-  /** Gutter number when it is not in the anchor. */
-  num?: string
   /** The text with emphasis, when the row has any. */
   spans?: Span[]
   /** List depth (0 for a top-level item) and the item's bullet or number. */
@@ -40,6 +38,7 @@ export type GridSheet = {
   cols: string[]
   rows: GridCell[][]
   isCut?: boolean
+  isHidden?: boolean
 }
 
 export type Doc =
@@ -59,6 +58,10 @@ export type Doc =
 /** What the person highlighted, as the comment will name it. */
 export type ReviewSelection = {
   path: string
+  /** Grid only: the sheet's name, as stored (the label quotes it Excel's way). */
+  sheet?: string
+  /** Made in a formatted file's source view. */
+  raw?: true
   label: string
   quote: string
   /** Rows (or grid rows) the highlight covers, to draw it: first and last. */
@@ -69,17 +72,20 @@ export type ReviewSelection = {
   colTo?: number
 }
 
-export type ReviewComment = {
+/**
+ * A comment is tied to its file and the text it quotes, not to row numbers:
+ * when the file changes, `from`/`to` are found again by the quote, and a
+ * comment whose text is gone is marked stale.
+ */
+export type ReviewComment = ReviewSelection & {
   id: string
-  path: string
-  label: string
-  quote: string
   text: string
-  status: 'draft' | 'sent'
-  from: number
-  to: number
-  colFrom?: number
-  colTo?: number
+  /** draft: waiting here; queued: in the prompt box; sent: Claude is on it. */
+  status: 'draft' | 'queued' | 'sent'
+  /** The send it went out in. */
+  batch?: string
+  /** Its quoted text is no longer in the file. */
+  isStale?: true
 }
 
 /** What Claude's last edit changed in the open file: rows of a document, cells of a sheet ("sheet:row:col"). */
@@ -102,8 +108,8 @@ declare module 'claude-code' {
   interface PluginState {
     'inline-doc-review': {
       files: string[]
-      current: string | null
-      doc: Doc | null
+      /** The file shown, and a counter bumped each time it is (re)read; the document itself is held by the hooks module. */
+      open: { path: string | null; version: number }
       view: View
       selection: ReviewSelection | null
       comments: ReviewComment[]

@@ -1,6 +1,7 @@
 import type { ClientKeyEvent, ClientModule, ClientPointerEvent } from 'claude-code'
 
 import type { RowStyle, Span, Tone } from '../types'
+import { cutTo, strWidth } from './text'
 
 /**
  * The document view inside the pane. It draws only the rows in view, which
@@ -9,8 +10,7 @@ import type { RowStyle, Span, Tone } from '../types'
  * the comment. Keys move the cursor or scroll, posted the same way, since
  * the hooks module owns the view.
  *
- * It also runs the pane's motion, on its own frame clock: what Claude just
- * changed glows green and fades, and a new comment's marker pops in.
+ * What Claude just changed glows green and fades, on the view's own clock.
  */
 
 /** The colours the view paints with (a Palette from palette.ts). */
@@ -70,15 +70,10 @@ export type GridRow = {
   marks?: Record<string, 2 | 3>
 }
 
-type Motion = {
+export type ViewerProps = {
   /** Bumped by the hooks module when Claude changed the file: the changed rows/cells glow. */
-  flashKey?: number
-  /** The newest comment's id and place: its marker pops in. */
-  pop?: { key: string; r: number; c: number }
-}
-
-export type ViewerProps = Motion &
-  (
+  flashKey: number
+} & (
     | { mode: 'lines'; pal: ViewPal; rows: LineRow[]; gutter: number; width: number }
     | {
         mode: 'grid'
@@ -102,11 +97,9 @@ export type ViewerProps = Motion &
 type Point = [number, number]
 type Local = {
   drag?: { a: Point; b: Point }
-  flash?: { key: number; frame: number }
-  pop?: { key: string; frame: number }
-  isMounted?: boolean
-  seenFlash?: number
-  seenPop?: string
+  /** The edit last seen, and frames left of its glow. */
+  seenFlash: number
+  glow: number
 }
 
 export type ViewerPost =
@@ -118,19 +111,16 @@ export type ViewerPost =
 
 const GAP = 2
 
-/** Theme keys, used when no palette arrives (a main module from before 0.3). */
-const FALLBACK: ViewPal = {
-  text: 'text', subtle: 'subtle', dim: 'inactive', accent: 'claude', formula: 'suggestion', comment: 'warning',
-  selection: '', h2: 'suggestion', h3: 'suggestion', link: 'suggestion', code: 'permission', band: '', zebra: '',
-  flash: '', info: 'suggestion', note: 'permission', warning: 'warning', success: 'success', error: 'error',
-}
 const FLASH_FRAMES = 14
-const POP = ['·', '∘', '○', '◉', '●', '●', '◉', '●']
 
-const pad = (text: string, width: number) =>
-  text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text + ' '.repeat(width - text.length)
-const padStart = (text: string, width: number) =>
-  text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : ' '.repeat(width - text.length) + text
+const pad = (text: string, width: number) => {
+  const cut = cutTo(text, width)
+  return cut + ' '.repeat(Math.max(0, width - strWidth(cut)))
+}
+const padStart = (text: string, width: number) => {
+  const cut = cutTo(text, width)
+  return ' '.repeat(Math.max(0, width - strWidth(cut))) + cut
+}
 
 /** A grid cell is: a 2-cell formula slot, the value, a 1-cell comment slot, a gap. */
 const cellWidth = (w: number) => 2 + w + 1 + GAP
@@ -138,58 +128,24 @@ const cellWidth = (w: number) => 2 + w + 1 + GAP
 /** A comment mark goes on the first visual line of its row only. */
 const isFirstOf = (rows: LineRow[], i: number) => i === 0 || rows[i - 1]?.src !== rows[i]?.src
 
-const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
-  // Fields a main module from an older version does not send get their defaults.
-  const props = (
-    input.mode === 'grid'
-      ? {
-          ...input,
-          rows: input.rows ?? [],
-          letters: input.letters ?? [],
-          widths: input.widths ?? [],
-          moreLeft: input.moreLeft ?? 0,
-          moreRight: input.moreRight ?? 0,
-          moreBelow: input.moreBelow ?? 0,
-          scroll: input.scroll ?? { top: 0, shown: 0, total: 0 },
-          isZebra: input.isZebra ?? false,
-        }
-      : { ...input, rows: input.rows ?? [], width: input.width ?? 60 }
-  ) as ViewerProps
+const Viewer: ClientModule<ViewerProps, Local> = (props, surface) => {
   const { Box, Text } = surface.elements
-  // A main module from an older version may not send colours: fall back to the theme's own.
-  const pal: ViewPal = { ...FALLBACK, ...(props.pal ?? {}) }
-  const local = surface.state ?? {}
-  const drag = local.drag
-
-  // ── Motion: start a glow or a pop when the hooks module asks for one. ──
-  const start = (kind: 'flash' | 'pop', key: number | string, frames: number, ms: number) => {
-    let frame = 0
-    const stop = surface.every(ms, () => {
-      frame += 1
-      const now = surface.state ?? {}
-      if (frame >= frames) {
-        stop()
-        surface.setState(kind === 'flash' ? { ...now, flash: undefined } : { ...now, pop: undefined })
-      } else {
-        surface.setState(kind === 'flash' ? { ...now, flash: { key: key as number, frame } } : { ...now, pop: { key: key as string, frame } })
-      }
+  const { pal } = props
+  if (surface.state === undefined) {
+    // The first draw only notes the edit already shown; one timer, started here, runs each later glow down.
+    surface.setState({ seenFlash: props.flashKey, glow: 0 })
+    surface.every(90, () => {
+      const now = surface.state
+      if (now && now.glow > 0) surface.setState({ ...now, glow: now.glow - 1 })
     })
+  } else if (props.flashKey !== surface.state.seenFlash) {
+    surface.setState({ ...surface.state, seenFlash: props.flashKey, glow: FLASH_FRAMES })
   }
-  if (!local.isMounted) {
-    // The first draw only notes where things stand; later changes animate.
-    surface.setState({ ...local, isMounted: true, seenFlash: props.flashKey ?? 0, seenPop: props.pop?.key ?? '' })
-  } else if ((props.flashKey ?? 0) !== local.seenFlash) {
-    start('flash', props.flashKey ?? 0, FLASH_FRAMES, 90)
-    surface.setState({ ...local, seenFlash: props.flashKey ?? 0, flash: { key: props.flashKey ?? 0, frame: 0 } })
-  } else if ((props.pop?.key ?? '') !== local.seenPop) {
-    if (props.pop) start('pop', props.pop.key, POP.length, 60)
-    surface.setState({ ...local, seenPop: props.pop?.key ?? '', ...(props.pop ? { pop: { key: props.pop.key, frame: 0 } } : {}) })
-  }
-  const isGlowing = local.flash !== undefined
-  const glowBg = isGlowing && (local.flash?.frame ?? 0) < FLASH_FRAMES * 0.65 ? pal.flash : undefined
+  const local = surface.state ?? { seenFlash: props.flashKey, glow: 0 }
+  const drag = local.drag
+  const isGlowing = local.glow > 0
+  const glowBg = local.glow > FLASH_FRAMES * 0.35 ? pal.flash || undefined : undefined
   const glowFg = isGlowing ? pal.success : undefined
-  const popGlyph = (r: number, c: number) =>
-    local.pop && props.pop && props.pop.r === r && props.pop.c === c ? (POP[local.pop.frame] ?? '●') : undefined
 
   // ── Input ──
   const gridLines =
@@ -218,7 +174,7 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
     if (event.button !== undefined && event.button !== 'left') return
     const at = cellAt(event)
     if (!at) return
-    const now = surface.state ?? {}
+    const now = surface.state ?? local
     if (event.type === 'down') {
       surface.setState({ ...now, drag: { a: at, b: at } })
     } else if (event.type === 'move' && now.drag && event.button === 'left') {
@@ -260,12 +216,11 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
         {props.rows.map((row, i) => {
           const isLit = (drag ? row.src >= lo && row.src <= hi : row.hl === 1) && row.st !== 'space'
           const mark = row.hl === 2 || row.hl === 3 ? row.hl : row.mark
-          const popped = popGlyph(row.src, 0)
           const glow = row.fl === 1 && isGlowing
-          const markGlyph = popped ?? (glow ? '✓' : mark && isFirstOf(props.rows, i) ? '●' : ' ')
+          const markGlyph = glow ? '✓' : mark && isFirstOf(props.rows, i) ? '●' : ' '
           const gutter = (
             <Text>
-              <Text color={glow ? pal.success : mark === 2 || popped ? pal.comment : pal.dim}>{markGlyph}</Text>
+              <Text color={glow ? pal.success : mark === 2 ? pal.comment : pal.dim}>{markGlyph}</Text>
               {props.gutter > 0 && <Text color={pal.dim}>{padStart(row.n, props.gutter)} </Text>}
               <Text color={pal.accent}>{isLit ? '▌' : ' '}</Text>
               <Text> </Text>
@@ -288,7 +243,7 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
               <Box key={`r${i}`} flexDirection="row">
                 {gutter}
                 <Text backgroundColor={isLit ? selBg : pal.band || undefined} color={pal.accent} bold inverse={!pal.band && !isLit}>
-                  {pad(` ${text}`, Math.max(text.length + 2, width))}
+                  {pad(` ${text}`, Math.max(strWidth(text) + 2, width))}
                 </Text>
               </Box>
             )
@@ -296,7 +251,7 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
           const look =
             row.st === 'h2'
               ? { bold: true, color: pal.h2 }
-              : row.st === 'h3' || row.st === 'heading'
+              : row.st === 'h3'
                 ? { bold: true, color: pal.h3 }
                 : row.st === 'quote'
                   ? { italic: true, color: pal.subtle }
@@ -309,7 +264,7 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
           const pre =
             row.st === 'h2' ? '▍ ' : row.st === 'quote' ? '▎ ' : row.st === 'panel' ? (isPanelTitle ? `┃ ${TONE_ICON[row.tone ?? 'note']} ` : '┃ ') : (row.pre ?? '')
           const preColor = row.st === 'panel' ? toneColor(row.tone) : row.st === 'li' || row.st === 'h2' ? pal.accent : row.st === 'quote' ? pal.note : pal.dim
-          const used = pre.length + spans.reduce((n, s) => n + s.t.length, 0)
+          const used = strWidth(pre) + spans.reduce((n, s) => n + strWidth(s.t), 0)
           return (
             <Box key={`r${i}`} flexDirection="row">
               {gutter}
@@ -379,7 +334,6 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
           const isError = (row.err ?? []).includes(j)
           const isNeg = (row.neg ?? []).includes(j)
           const glow = isGlowing && (row.fl ?? []).includes(j)
-          const popped = popGlyph(row.r, col)
           const mark = row.marks?.[String(j)]
           const width = props.widths[j] ?? 1
           const value = (row.num ?? []).includes(j) ? padStart(cell, width) : pad(cell, width)
@@ -393,8 +347,8 @@ const Viewer: ClientModule<ViewerProps, Local> = (input, surface) => {
               <Text backgroundColor={bg} bold={isHeader || isFormula} color={color} inverse={isLit && !selBg}>
                 {value}
               </Text>
-              <Text backgroundColor={bg} color={glow ? pal.success : popped || mark === 2 ? pal.comment : pal.dim}>
-                {popped ?? (glow ? '✓' : mark ? '●' : ' ')}
+              <Text backgroundColor={bg} color={glow ? pal.success : mark === 2 ? pal.comment : pal.dim}>
+                {glow ? '✓' : mark ? '●' : ' '}
               </Text>
               <Text backgroundColor={rowBg}>{' '.repeat(GAP)}</Text>
             </Text>

@@ -1,4 +1,6 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
+
+import { begin, start } from './setup'
 
 /** Every file type: it opens, a part of it is selected, a comment names that part, and it reaches Claude. */
 
@@ -20,15 +22,14 @@ const CASES: [string, number, RegExp, RegExp][] = [
 for (const [name, row, label, quote] of CASES) {
   test(`${name}: open, select, comment, send`, async ($, on) => {
     let filled = ''
-    mock.store(on)
-    on('fs.exists', () => ({ value: true }))
+    begin(on)
     on('fs.read', () => ({ value: TEXTS[name] ?? '' }))
     on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(DOCS[name] ?? {}), stderr: '' } }))
-    on('ui.open', () => ({ value: { isPlaced: true } }))
     on('prompt.fill', (_, e) => {
       filled = e.text
       return { isFilled: true }
     })
+    await start($)
     await $.command.run({ command: 'inline-review', args: `/w/${name}` })
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface, ...PANE })
@@ -49,14 +50,13 @@ for (const [name, row, label, quote] of CASES) {
 
 test('pricing-page.png: shows the picture, and a comment applies to the whole image', async ($, on) => {
   let filled = ''
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
+  begin(on)
   on('fs.read', () => ({ value: { base64: PNG } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('prompt.fill', (_, e) => {
     filled = e.text
     return { isFilled: true }
   })
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/pricing-page.png' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Image', key: 'png' })).toBeDefined()
@@ -68,10 +68,9 @@ test('pricing-page.png: shows the picture, and a comment applies to the whole im
 })
 
 test('Markdown, HTML and ADF switch to their source and back', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
+  begin(on)
   on('fs.read', () => ({ value: TEXTS['launch-plan.md'] ?? '' }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/launch-plan.md' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /## Audience/, in: 'viewer' })).toBeUndefined()

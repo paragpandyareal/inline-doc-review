@@ -1,6 +1,8 @@
 // QA: pane flows (comments, labels, open_files, file changes, grids, surfaces).
 // Each test asserts the EXPECTED behaviour; a failing test marks a bug.
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
+
+import { begin, start } from './setup'
 
 const PANE = (cols = 80, rows = 30) =>
   ({
@@ -41,20 +43,16 @@ const grid = (sheets: { name: string; rows: { v: string; f?: string; x?: number 
     ...extra,
   })
 
-function base(on: Parameters<Parameters<typeof test>[1]>[1]) {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-}
 
 test('HTML on one line: a comment on the 2nd paragraph is a new comment, not an edit of the 1st', async ($, on) => {
-  base(on)
+  begin(on)
   let filled = ''
   on('fs.read', () => ({ value: '<html><body><h1>T</h1><p>First para</p><p>Second para</p></body></html>' }))
   on('prompt.fill', (_, e) => {
     filled = e.text
     return { isFilled: true }
   })
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/min.html' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.post({ type: 'select', a: [3, 0], b: [3, 0] }, { in: 'viewer' })
@@ -70,8 +68,9 @@ test('HTML on one line: a comment on the 2nd paragraph is a new comment, not an 
 })
 
 test('open_files: duplicate and equivalent paths open one tab each', async ($, on) => {
-  base(on)
+  begin(on)
   on('fs.read', () => ({ value: '# Hi' }))
+  await start($)
   const ran = await $.tool.call({ tool: 'mcp__inline-doc-review__open_files', input: { paths: ['/w/a.md', '/w/a.md', '/w/./b.md', '/w/x/../b.md'], replace: true } })
   console.log(ran.text)
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
@@ -81,11 +80,10 @@ test('open_files: duplicate and equivalent paths open one tab each', async ($, o
 })
 
 test('open_files: all paths missing gives a clear error and leaves the pane alone', async ($, on) => {
-  mock.store(on)
   let exists = true
-  on('fs.exists', () => ({ value: exists }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  begin(on, { exists: () => exists })
   on('fs.read', () => ({ value: '# Old' }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/old.md' })
   exists = false
   const ran = await $.tool.call({ tool: 'mcp__inline-doc-review__open_files', input: { paths: ['/w/gone.md'], replace: true } })
@@ -96,13 +94,14 @@ test('open_files: all paths missing gives a clear error and leaves the pane alon
 })
 
 test("sheet names: an apostrophe is doubled in the label ('Bob''s Q1'!A2), as Excel and openpyxl need", async ($, on) => {
-  base(on)
+  begin(on)
   let filled = ''
   on('prompt.fill', (_, e) => {
     filled = e.text
     return { isFilled: true }
   })
   on('process.run', () => ({ value: { exitCode: 0, stdout: grid([{ name: "Bob's Q1", rows: [[{ v: 'Item' }], [{ v: 'x' }]] }]), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/b.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.post({ type: 'select', a: [1, 0], b: [1, 0] }, { in: 'viewer' })
@@ -113,7 +112,7 @@ test("sheet names: an apostrophe is doubled in the label ('Bob''s Q1'!A2), as Ex
 })
 
 test("sheet names: a comment on sheet 'Q1!Data' jumps back to that sheet from the list", async ($, on) => {
-  base(on)
+  begin(on)
   on('process.run', () => ({
     value: {
       exitCode: 0,
@@ -124,6 +123,7 @@ test("sheet names: a comment on sheet 'Q1!Data' jumps back to that sheet from th
       stderr: '',
     },
   }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/q.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.key({ key: ']', in: 'viewer' })
@@ -138,8 +138,9 @@ test("sheet names: a comment on sheet 'Q1!Data' jumps back to that sheet from th
 })
 
 test('grid: a cell holding a newline keeps the row on one line', async ($, on) => {
-  base(on)
+  begin(on)
   on('process.run', () => ({ value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: 'H1' }, { v: 'H2' }], [{ v: 'Line1\nLine2' }, { v: 'z' }], [{ v: 'a' }, { v: 'b' }]] }]), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/nl.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   const drawn = lines(await ui.drawn({ in: 'viewer' }))
@@ -148,10 +149,11 @@ test('grid: a cell holding a newline keeps the row on one line', async ($, on) =
 })
 
 test('grid: CJK and emoji cells keep the columns aligned', async ($, on) => {
-  base(on)
+  begin(on)
   on('process.run', () => ({
     value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: '名前' }, { v: 'Amt' }], [{ v: '東京都庁舎' }, { v: '1', x: 1 }], [{ v: 'Tokyo' }, { v: '2', x: 2 }], [{ v: '🙂🙂' }, { v: '3', x: 3 }]] }]), stderr: '' },
   }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/cjk.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   const drawn = lines(await ui.drawn({ in: 'viewer' })).filter(l => l.includes('┃'))
@@ -162,19 +164,21 @@ test('grid: CJK and emoji cells keep the columns aligned', async ($, on) => {
 })
 
 test('grid: the workbook note (formulas not calculated) is shown', async ($, on) => {
-  base(on)
+  begin(on)
   on('process.run', () => ({
     value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: 'H' }], [{ v: '', f: '=1+1' }]] }], { note: 'Formula results could not be calculated here; run /inline-review setup.' }), stderr: '' },
   }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/n.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   expect(await ui.find({ type: 'Text', text: /could not be calculated/ })).toBeDefined()
 })
 
 test('grid: a sheet cut to 500 rows says so even while a cell is selected / scrolled to the end', async ($, on) => {
-  base(on)
+  begin(on)
   const rows = [[{ v: 'n' }], ...Array.from({ length: 499 }, (_, i) => [{ v: String(i), x: i }])]
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ kind: 'grid', sheets: [{ name: 'Tall', cols: ['A'], rows, isCut: true }] }), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/t.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.key({ key: 'end', in: 'viewer' })
@@ -186,19 +190,18 @@ test('grid: a sheet cut to 500 rows says so even while a cell is selected / scro
 })
 
 test('lines: a draft comment follows its text when Claude inserts a line above it (or is flagged as stale)', async ($, on) => {
-  base(on)
-  mock.clock(on)
   let text = 'alpha\nbeta\ngamma'
   let mtime = 1
+  begin(on, { mtime: () => mtime })
   on('fs.read', () => ({ value: text }))
   on('fs.list', () => ({ value: [] }))
   on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok', text: 'ok' }))
-  on('fs.stat', () => ({ value: { kind: 'file', size: 1, mtimeMs: mtime, isLink: false } }))
   let filled = ''
   on('prompt.fill', (_, e) => {
     filled = e.text
     return { isFilled: true }
   })
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/n.txt' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.post({ type: 'select', a: [2, 0], b: [2, 0] }, { in: 'viewer' })
@@ -215,10 +218,11 @@ test('lines: a draft comment follows its text when Claude inserts a line above i
 })
 
 test('lines: clicking a comment in the list scrolls a wrapped document to it', async ($, on) => {
-  base(on)
+  begin(on)
   const long = 'word '.repeat(60).trim()
   const md = Array.from({ length: 12 }, (_, i) => `Para ${i} ${long}`).join('\n\n') + '\n\nTARGET paragraph at the end.'
   on('fs.read', () => ({ value: md }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/long.md' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE(60, 30) })
   const rows = 12 * 2 // 12 paragraphs + spacers before the target
@@ -234,8 +238,9 @@ test('lines: clicking a comment in the list scrolls a wrapped document to it', a
 })
 
 test('lines: pressing ← with nothing selected does not select line 1 or jump to the top', async ($, on) => {
-  base(on)
+  begin(on)
   on('fs.read', () => ({ value: Array.from({ length: 100 }, (_, i) => `line ${i + 1}`).join('\n') }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/l.txt' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.key({ key: 'pagedown', in: 'viewer' })
@@ -246,19 +251,15 @@ test('lines: pressing ← with nothing selected does not select line 1 or jump t
 })
 
 test('a file deleted while open is reported (not silently kept as if current)', async ($, on) => {
-  base(on)
-  mock.clock(on)
   let gone = false
+  begin(on, { isGone: () => gone, mtime: () => (gone ? 0 : 1) })
   on('fs.read', () => {
     if (gone) throw new Error('ENOENT: no such file')
     return { value: 'hello' }
   })
-  on('fs.stat', () => {
-    if (gone) throw new Error('ENOENT')
-    return { value: { kind: 'file', size: 1, mtimeMs: 1, isLink: false } }
-  })
   on('fs.list', () => ({ value: [] }))
   on('tool.call', { tool: 'Bash' }, () => ({ result: 'ok', text: 'ok' }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/d.txt' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   gone = true
@@ -269,8 +270,9 @@ test('a file deleted while open is reported (not silently kept as if current)', 
 })
 
 test('a binary file with a .txt name is refused, not drawn as control characters', async ($, on) => {
-  base(on)
+  begin(on)
   on('fs.read', () => ({ value: 'PK\u0003\u0004\u0000\u0000\u0008\u0000\u001b[2J��' }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/bin.txt' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   const all = lines(await ui.drawn()).join(NL)
@@ -279,8 +281,9 @@ test('a binary file with a .txt name is refused, not drawn as control characters
 })
 
 test('narrow pane (40 columns): the file bar fits in the pane', async ($, on) => {
-  base(on)
+  begin(on)
   on('fs.read', () => ({ value: '# A heading that is fairly long indeed\n\n| col one | col two | col three |\n|---|---|---|\n| 1 | 2 | 3 |\n\n- item with a long long long long text\n\n```\nconst veryLongCodeLine = "abcdefghijklmnopqrstuvwxyz0123456789"\n```' }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/a-file-with-a-long-name.md' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE(40, 30) })
   await ui.post({ type: 'select', a: [0, 0], b: [0, 0] }, { in: 'viewer' })
@@ -291,13 +294,14 @@ test('narrow pane (40 columns): the file bar fits in the pane', async ($, on) =>
 })
 
 test('comment edit: clearing the text deletes the comment; Send marks drafts sent', async ($, on) => {
-  base(on)
+  begin(on)
   let submitted = ''
   on('fs.read', () => ({ value: 'a\nb\nc' }))
   on('prompt.submit', (_, e) => {
     submitted = e.text
     return { text: e.text }
   })
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/e.txt' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE() })
   await ui.post({ type: 'select', a: [0, 0], b: [0, 0] }, { in: 'viewer' })
@@ -314,10 +318,11 @@ test('comment edit: clearing the text deletes the comment; Send marks drafts sen
 })
 
 test('surfaces: every surface draws a document without throwing', async ($, on) => {
-  base(on)
+  begin(on)
   on('fs.read', () => ({ value: '# T\n\nhello' }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: 'H' }], [{ v: '1', x: 1 }]] }]), stderr: '' } }))
   for (const file of ['/w/s.md', '/w/s.xlsx']) {
+    await start($)
     await $.command.run({ command: 'inline-review', args: file })
     for (const surface of ['terminal', 'desktop', 'vscode', 'mobile'] as const) {
       let out = ''

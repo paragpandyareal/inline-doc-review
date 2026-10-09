@@ -1,31 +1,20 @@
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
+
+import { PANE, begin, start } from './setup'
 
 const NOTES = ['# Plan', '', 'We ship in May.', 'Budget is 40k.', 'Risks: none.'].join('\n')
 
-const PANE = {
-  component: 'Pane',
-  requestId: 'review',
-  props: {
-    title: 'Review',
-    isFocused: true,
-    bodyColumns: 80,
-    placement: 'dock',
-    scroll: { offset: 0, bodyRows: 30 },
-    view: {},
-  },
-} as const
 
 test('a highlighted range becomes a comment that names it, and lands in the prompt box', async ($, on) => {
   let filled = ''
-  mock.store(on)
+  begin(on)
   on('fs.read', () => ({ value: NOTES }))
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('prompt.fill', ($, e) => {
     filled = e.text
     return { isFilled: true }
   })
 
+  await start($)
   const opened = await $.command.run({ command: 'inline-review', args: '/work/plan.txt' })
   expect(opened.text).toBe('Review pane opened.')
 
@@ -47,14 +36,15 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /Comments · 2/ })).toBeDefined()
   await ui.press({ key: 'fill' })
-  expect(filled).toContain('`/work/plan.txt`, lines 3–4')
-  expect(filled).toContain('> We ship in May.\n   > Budget is 40k.')
+  expect(filled).toContain('File: `/work/plan.txt`\n   Location: lines 3–4')
+  expect(filled).toContain('<file-excerpt>\n   We ship in May.\n   Budget is 40k.\n   </file-excerpt>')
   expect(filled).toContain('Feedback: Say which May.')
   expect(await ui.find({ key: 'send' })).toBeUndefined()
 })
 
 test('auto-open is off until asked for, and the setting sticks', async ($, on) => {
-  mock.store(on)
+  begin(on)
+  await start($)
   const before = await $.command.run({ command: 'inline-review', args: 'auto' })
   expect(before.text).toContain('Auto-open is off')
   await $.command.run({ command: 'inline-review', args: 'auto on' })
@@ -65,10 +55,9 @@ test('auto-open is off until asked for, and the setting sticks', async ($, on) =
 const BUDGET = {"kind": "grid", "sheets": [{"name": "Budget", "cols": ["A", "B", "C", "D", "E"], "rows": [[{"v": "Line item"}, {"v": "Jan"}, {"v": "Feb"}, {"v": "Mar"}, {"v": "Total"}], [{"v": "Facebook ads"}, {"v": "700", "x": 700}, {"v": "8,000", "x": 8000}, {"v": "8,000", "x": 8000}, {"v": "16,700", "f": "=SUM(B2:D2)", "x": 16700}], [{"v": "Letterbox print"}, {"v": "9,600", "x": 9600}, {"v": "4,800", "x": 4800}, {"v": "0", "x": 0}, {"v": "14,400", "f": "=SUM(B3:D3)", "x": 14400}], [{"v": "Info nights"}, {"v": "3,200", "x": 3200}, {"v": "3,200", "x": 3200}, {"v": "3,200", "x": 3200}, {"v": "9,600", "f": "=SUM(B4:D4)", "x": 9600}], [{"v": "Installer bonus"}, {"v": "0", "x": 0}, {"v": "5,000", "x": 5000}, {"v": "5,000", "x": 5000}, {"v": "10,000", "f": "=SUM(B5:D5)", "x": 10000}], [{"v": "Total"}, {"v": "13,500", "f": "=SUM(B2:B5)", "x": 13500}, {"v": "21,000", "f": "=SUM(C2:C5)", "x": 21000}, {"v": "16,200", "f": "=SUM(D2:D5)", "x": 16200}, {"v": "50,700", "f": "=SUM(E2:E5)", "x": 50700}]], "isCut": false}, {"name": "Sign-ups", "cols": ["A", "B", "C"], "rows": [[{"v": "Suburb"}, {"v": "Target"}, {"v": "Signed"}], [{"v": "Penrith"}, {"v": "200", "x": 200}, {"v": "64", "x": 64}], [{"v": "Blacktown"}, {"v": "180", "x": 180}, {"v": "51", "x": 51}], [{"v": "Mount Druitt"}, {"v": "120", "x": 120}, {"v": "22", "x": 22}]], "isCut": false}]}
 
 test('a spreadsheet shows values, marks formulas, and shows the formula of the clicked cell', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  begin(on)
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
 
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
@@ -91,10 +80,9 @@ test('a spreadsheet shows values, marks formulas, and shows the formula of the c
 })
 
 test('arrow keys in every direction, past every edge, never break the pane', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  begin(on)
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   // No selection yet: the first arrow starts the cursor.
@@ -103,17 +91,19 @@ test('arrow keys in every direction, past every edge, never break the pane', asy
     await ui.key({ key, shift: true, in: 'viewer' })
   }
   expect(await ui.drawn()).toBeDefined()
+  // With nothing selected, the first arrow puts the cursor on the first row in view.
   await ui.key({ key: '[', in: 'viewer' })
+  await ui.key({ key: 'down', in: 'viewer' })
+  expect(await ui.find({ type: 'Text', text: /^ A2/ })).toBeDefined()
   await ui.key({ key: 'down', in: 'viewer' })
   expect(await ui.find({ type: 'Text', text: /^ A3/ })).toBeDefined()
 })
 
 test('arrow keys on the file tabs move between files', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
+  begin(on)
   on('fs.read', () => ({ value: NOTES }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/plan.txt' })
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
@@ -126,14 +116,13 @@ test('arrow keys on the file tabs move between files', async ($, on) => {
 
 test('comment on C3, C4 and C6, then go back and edit one before sending', async ($, on) => {
   let filled = ''
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  begin(on)
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
   on('prompt.fill', ($, e) => {
     filled = e.text
     return { isFilled: true }
   })
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
 
@@ -168,13 +157,11 @@ test('comment on C3, C4 and C6, then go back and edit one before sending', async
 })
 
 test('after sending, a spinner shows; when Claude changes the file, the changed cells glow and fade', async ($, on) => {
-  mock.store(on)
+  begin(on)
   let budget: typeof BUDGET = BUDGET
-  on('fs.exists', () => ({ value: true }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
-  mock.clock(on)
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(budget), stderr: '' } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
 
@@ -192,17 +179,16 @@ test('after sending, a spinner shows; when Claude changes the file, the changed 
   await ui.advance(100)
   expect(await ui.find({ type: 'Text', text: '✓', in: 'viewer' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /900/, in: 'viewer' })).toBeDefined()
-  // The sent comment is done: the spinner goes.
-  expect(await ui.find({ key: 'spinner' })).toBeUndefined()
+  // Claude may edit again before it is done: the spinner stays until its turn ends.
+  expect(await ui.find({ key: 'spinner' })).toBeDefined()
   await ui.advance(3000)
   expect(await ui.find({ type: 'Text', text: '✓', in: 'viewer' })).toBeUndefined()
 })
 
 test('opening files keeps the tab order, so → walks through them all', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
+  begin(on)
   on('fs.read', ($, e) => ({ value: `# ${String((e as { path?: string }).path ?? '')}` }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
   for (const name of ['a.md', 'b.md', 'c.md']) await $.command.run({ command: 'inline-review', args: `/w/${name}` })
   await $.command.run({ command: 'inline-review', args: '/w/a.md' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
@@ -213,14 +199,13 @@ test('opening files keeps the tab order, so → walks through them all', async (
 })
 
 test('open_files with replace makes exactly those tabs, in order, and clears old comments', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
+  begin(on)
   on('fs.read', () => ({ value: '# Hello' }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/w/old.md' })
   const ran = await $.tool.call({ tool: 'mcp__inline-doc-review__open_files', input: { paths: ['/w/one.md', '/w/two.md', '/w/nope.exe'], replace: true } })
   expect(ran.text).toContain('Opened 2 files')
-  expect(ran.text).toContain('Skipped: /w/nope.exe')
+  expect(ran.text).toContain('/w/nope.exe.')
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   // Closed, the bar shows only the open file; ↓ drops down the list of all of them.
   expect(JSON.stringify(await ui.drawn({ in: 'file-tabs' }))).not.toContain('two.md')
@@ -232,10 +217,9 @@ test('open_files with replace makes exactly those tabs, in order, and clears old
 })
 
 test('the file bar: one line, a dropdown to jump, and ← → to step', async ($, on) => {
-  mock.store(on)
-  on('fs.exists', () => ({ value: true }))
+  begin(on)
   on('fs.read', ($, e) => ({ value: `# Title of ${String((e as { path?: string }).path ?? '')}` }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  await start($)
   await $.tool.call({ tool: 'mcp__inline-doc-review__open_files', input: { paths: ['/w/a.md', '/w/b.md', '/w/c.md', '/w/d.md'], replace: true } })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   const bar = async () => JSON.stringify(await ui.drawn({ in: 'file-tabs' }))
@@ -266,15 +250,12 @@ test('the file bar: one line, a dropdown to jump, and ← → to step', async ($
   expect(await bar()).toContain(' 2/4 ')
 })
 
-test('an edit made by a command refreshes the open file at once, and the spinner clears when Claude finishes', async ($, on) => {
-  mock.store(on)
-  mock.clock(on)
+test('an edit made by a command refreshes the open file at once; the spinner clears when Claude finishes its turn', async ($, on) => {
   let budget: typeof BUDGET = BUDGET
   let mtime = 1000
-  on('fs.exists', () => ({ value: true }))
-  on('fs.stat', () => ({ value: { kind: 'file', size: 100, mtimeMs: mtime, isLink: false } }))
+  begin(on, { mtime: () => mtime })
   on('fs.list', () => ({ value: [] }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('turn.complete', () => ({ text: 'done' }))
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(budget), stderr: '' } }))
   // What Claude's command does: rewrite the workbook on disk.
@@ -286,6 +267,7 @@ test('an edit made by a command refreshes the open file at once, and the spinner
     mtime = 2000
     return { result: 'ok', text: 'ok' }
   })
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })
@@ -295,18 +277,17 @@ test('an edit made by a command refreshes the open file at once, and the spinner
 
   await $.tool.call({ tool: 'Bash', input: { command: 'python3 edit.py' } })
   expect(await ui.find({ type: 'Text', text: /810/, in: 'viewer' })).toBeDefined()
+  expect(await ui.find({ key: 'spinner' })).toBeDefined()
+  await $.turn.complete({ answer: 'Done.', durationMs: 10, isAborted: false, turnId: 't1', reason: 'answer' } as never)
   expect(await ui.find({ key: 'spinner' })).toBeUndefined()
 })
 
 test('when Claude finishes without changing the file, sent comments stop showing as in progress', async ($, on) => {
-  mock.store(on)
-  mock.clock(on)
-  on('fs.exists', () => ({ value: true }))
-  on('fs.stat', () => ({ value: { kind: 'file', size: 100, mtimeMs: 1000, isLink: false } }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  begin(on)
   on('prompt.submit', (_, e) => ({ text: e.text }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
   on('turn.complete', () => ({ text: 'done' }))
+  await start($)
   await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
   await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })

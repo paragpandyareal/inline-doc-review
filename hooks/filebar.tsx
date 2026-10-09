@@ -1,5 +1,7 @@
 import type { ClientModule } from 'claude-code'
 
+import { cutTo, strWidth } from './text'
+
 /**
  * The top bar: a coloured file-type badge, the open file's name, a ▾ that
  * drops down the list of every open file, a ‹ n/N › stepper, and switches
@@ -14,20 +16,27 @@ export type FileBarProps = {
   active: number
   colors: { accent: string; text: string; subtle: string; dim: string; band: string }
   badge?: { label: string; bg: string; fg: string }
-  asides?: { id: string; label: string; color: string; isBold?: boolean }[]
+  /** The pane's width in columns. */
+  width: number
+  /** Switches at the right; `short` is shown when the pane is too narrow for `label`. */
+  asides?: { id: string; label: string; short: string; color: string; isBold?: boolean }[]
 }
 
 type Local = { isOpen: boolean; hover: number }
 
 const FileBar: ClientModule<FileBarProps, Local> = (input, surface) => {
   const { Box, Text } = surface.elements
-  const files = input.files ?? []
-  const active = Math.min(Math.max(0, input.active ?? 0), Math.max(0, files.length - 1))
-  const given: Partial<FileBarProps['colors']> = input.colors ?? {}
-  const c = { accent: given.accent ?? 'claude', text: given.text ?? 'text', subtle: given.subtle ?? 'subtle', dim: given.dim ?? 'inactive', band: given.band ?? '' }
-  const asides = input.asides ?? []
+  const files = input.files
+  const active = Math.min(Math.max(0, input.active), Math.max(0, files.length - 1))
+  const c = input.colors
+  const width = Math.max(30, input.width)
+  const counter = files.length > 1 ? `‹ ${active + 1}/${files.length} ›` : ''
+  const badgeText = input.badge ? ` ${input.badge.label} ` : ''
+  // On a narrow pane the switches shrink to their icons before the name gives way.
+  const full = input.asides ?? []
+  const roomy = strWidth(badgeText) + 2 + 16 + 4 + counter.length + 2 + strWidth(full.map(a => a.label).join('   ')) <= width
+  const asides = full.map(a => ({ ...a, label: roomy ? a.label : a.short }))
   const local = surface.state ?? { isOpen: false, hover: active }
-  const width = Math.max(30, surface.columns || 100)
 
   const go = (index: number) => {
     surface.setState({ isOpen: false, hover: index })
@@ -39,14 +48,13 @@ const FileBar: ClientModule<FileBarProps, Local> = (input, surface) => {
   }
 
   // Layout of the bar line, for clicks: badge, name, ▾, ‹ n/N ›, then switches at the right.
-  const badgeText = input.badge ? ` ${input.badge.label} ` : ''
-  const name = files[active]?.name ?? ''
-  const counter = files.length > 1 ? `‹ ${active + 1}/${files.length} ›` : ''
-  const nameAt = badgeText.length + (badgeText ? 2 : 0)
-  const caretAt = nameAt + name.length + 2
-  const counterAt = caretAt + 3
   const asideText = asides.map(a => a.label).join('   ')
-  const asideAt = Math.max(counterAt + counter.length + 2, width - asideText.length)
+  // The name gives way to the switches on a narrow pane.
+  const name = cutTo(files[active]?.name ?? '', Math.max(6, width - strWidth(badgeText) - 2 - 4 - counter.length - 2 - strWidth(asideText) - 2))
+  const nameAt = badgeText.length + (badgeText ? 2 : 0)
+  const caretAt = nameAt + strWidth(name) + 2
+  const counterAt = caretAt + 3
+  const asideAt = Math.max(counterAt + counter.length + 2, width - strWidth(asideText))
 
   surface.onPointer(event => {
     if (event.type !== 'down') return
@@ -54,11 +62,11 @@ const FileBar: ClientModule<FileBarProps, Local> = (input, surface) => {
       if (event.x >= asideAt && asides.length > 0) {
         let ax = asideAt
         for (const aside of asides) {
-          if (event.x < ax + aside.label.length + 3) {
+          if (event.x < ax + strWidth(aside.label) + 3) {
             surface.post({ type: 'aside', id: aside.id })
             return
           }
-          ax += aside.label.length + 3
+          ax += strWidth(aside.label) + 3
         }
         return
       }
@@ -126,16 +134,17 @@ const FileBar: ClientModule<FileBarProps, Local> = (input, surface) => {
         files.map((file, i) => {
           const isHover = i === local.hover
           const isActive = i === active
+          const shown = cutTo(file.name, Math.min(width, 60) - 14)
           return (
             <Box key={`f${i}`} flexDirection="row">
               <Text backgroundColor={isHover ? c.band || undefined : undefined} inverse={isHover && !c.band}>
                 <Text color={c.accent} bold>{isHover ? ' ▸ ' : '   '}</Text>
                 <Text color={file.color}>▪ </Text>
                 <Text color={isActive ? c.text : c.subtle} bold={isActive}>
-                  {file.name}
+                  {shown}
                 </Text>
                 <Text color={c.dim}>{isActive ? '  (open)' : ''}</Text>
-                <Text>{' '.repeat(Math.max(1, Math.min(width, 60) - file.name.length - 13))}</Text>
+                <Text>{' '.repeat(Math.max(1, Math.min(width, 60) - strWidth(shown) - 13))}</Text>
                 <Text color={c.dim}>{String(i + 1).padStart(2)}</Text>
                 <Text>{' '}</Text>
               </Text>

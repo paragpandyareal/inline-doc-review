@@ -1,5 +1,5 @@
 import type { DocRow, Span, Tone } from '../types'
-import { plain, spacer, tableRows, tidy } from './format'
+import { gap, plain, tableRows, tidy, trimSpaces } from './format'
 
 /**
  * Atlassian Document Format (the JSON Confluence and Jira pages are stored
@@ -28,9 +28,11 @@ export function isAdf(value: unknown): value is AdfNode {
 const str = (value: unknown) => (typeof value === 'string' ? value : value === undefined || value === null ? '' : String(value))
 
 /** Inline content with its marks: text, mentions, emoji, status lozenges, dates, links. */
-function inline(nodes: AdfNode[] | undefined): Span[] {
+function inline(nodes: AdfNode[] | undefined, depth = 0): Span[] {
   const out: Span[] = []
+  if (depth > MAX_DEPTH) return out
   for (const node of nodes ?? []) {
+    if (!isNode(node)) continue
     switch (node.type) {
       case 'text': {
         const span: Span = { t: node.text ?? '' }
@@ -68,11 +70,19 @@ function inline(nodes: AdfNode[] | undefined): Span[] {
         out.push({ t: str(node.attrs?.text), d: 1 })
         break
       default:
-        if (node.content) out.push(...inline(node.content))
+        // A node this reader does not know: whatever text it holds.
+        if (node.text) out.push({ t: node.text })
+        else if (node.content) out.push(...inline(node.content, depth + 1))
+        else if (typeof node.attrs?.text === 'string') out.push({ t: node.attrs.text, d: 1 })
     }
   }
   return tidy(out)
 }
+
+/** Deeper than this, a page is not worth drawing: it is cut off there. */
+const MAX_DEPTH = 50
+const isNode = (value: unknown): value is AdfNode => typeof value === 'object' && value !== null && !Array.isArray(value)
+const INLINE_TYPES = new Set(['text', 'hardBreak', 'mention', 'emoji', 'status', 'date', 'inlineCard', 'placeholder', 'inlineExtension'])
 
 const TONES: Record<string, Tone> = { info: 'info', note: 'note', warning: 'warning', error: 'error', success: 'success', tip: 'tip' }
 const TONE_TITLE: Record<Tone, string> = { info: 'Info', note: 'Note', warning: 'Warning', error: 'Important', success: 'Success', tip: 'Tip' }
@@ -82,24 +92,22 @@ export function adfRows(doc: AdfNode): DocRow[] {
   let heading: string | null = null
 
   const where = (path: string) => `${path}${heading ? ` (under "${heading}")` : ''}`
-  const gap = () => {
-    const last = rows[rows.length - 1]
-    if (last && last.style !== 'space') rows.push(spacer(last))
-  }
   const row = (spans: Span[], path: string, extra: Partial<DocRow>) => {
     rows.push({ text: plain(spans), anchor: where(path), unit: 'node', spans, style: 'p', ...extra })
   }
 
   /** Walks a block node; `tone` and `depth` carry a panel's colour and a list's nesting. */
-  const walk = (node: AdfNode, path: string, ctx: { tone?: Tone; depth: number; quote?: boolean }) => {
-    const kids = node.content ?? []
+  const walk = (node: AdfNode, path: string, ctx: { tone?: Tone; depth: number; quote?: boolean }, level = 0) => {
+    if (!isNode(node) || level > MAX_DEPTH) return
+    const kids = (Array.isArray(node.content) ? node.content : []).filter(isNode)
+    const into = (kid: AdfNode, i: number, next: typeof ctx) => walk(kid, `${path}.content[${i}]`, next, level + 1)
     const styleFor = (): DocRow['style'] => (ctx.tone ? 'panel' : ctx.quote ? 'quote' : 'p')
     switch (node.type) {
       case 'heading': {
         const spans = inline(kids)
         heading = plain(spans).trim() || heading
         const level = Number(node.attrs?.level ?? 1)
-        if (!ctx.tone) gap()
+        if (!ctx.tone) gap(rows)
         row(spans, path, { style: ctx.tone ? 'panel' : level <= 1 ? 'h1' : level === 2 ? 'h2' : 'h3', ...(ctx.tone ? { tone: ctx.tone } : {}) })
         if (level <= 1 && !ctx.tone) rows.push({ text: '', anchor: where(path), unit: 'node', style: 'rule' })
         return
@@ -107,44 +115,44 @@ export function adfRows(doc: AdfNode): DocRow[] {
       case 'paragraph': {
         const spans = inline(kids)
         if (plain(spans).trim() === '') return
-        if (!ctx.tone && ctx.depth === 0) gap()
+        if (!ctx.tone && ctx.depth === 0) gap(rows)
         row(spans, path, { style: styleFor(), ...(ctx.tone ? { tone: ctx.tone } : {}) })
         return
       }
       case 'rule':
-        gap()
+        gap(rows)
         rows.push({ text: '', anchor: where(path), unit: 'node', style: 'rule' })
         return
       case 'codeBlock': {
-        gap()
+        gap(rows)
         const code = plain(inline(kids))
         for (const line of code.split('\n')) rows.push({ text: line, anchor: where(path), unit: 'node', style: 'code', spans: [{ t: line || ' ', c: 1 }] })
-        gap()
+        gap(rows)
         return
       }
       case 'blockquote':
-        gap()
-        kids.forEach((kid, i) => walk(kid, `${path}.content[${i}]`, { ...ctx, quote: true }))
+        gap(rows)
+        kids.forEach((kid, i) => into(kid, i, { ...ctx, quote: true }))
         return
       case 'panel': {
         const tone = TONES[str(node.attrs?.panelType)] ?? 'note'
-        gap()
+        gap(rows)
         row([{ t: TONE_TITLE[tone], b: 1 }], path, { style: 'panel', tone })
-        kids.forEach((kid, i) => walk(kid, `${path}.content[${i}]`, { ...ctx, tone }))
-        gap()
+        kids.forEach((kid, i) => into(kid, i, { ...ctx, tone }))
+        gap(rows)
         return
       }
       case 'expand':
       case 'nestedExpand':
-        gap()
+        gap(rows)
         row([{ t: `▾ ${str(node.attrs?.title) || 'Details'}`, b: 1 }], path, { style: 'h3' })
-        kids.forEach((kid, i) => walk(kid, `${path}.content[${i}]`, ctx))
+        kids.forEach((kid, i) => into(kid, i, ctx))
         return
       case 'bulletList':
       case 'orderedList':
       case 'taskList':
       case 'decisionList': {
-        if (ctx.depth === 0 && !ctx.tone) gap()
+        if (ctx.depth === 0 && !ctx.tone) gap(rows)
         const start = Number(node.attrs?.order ?? 1) || 1
         kids.forEach((item, i) => {
           const itemPath = `${path}.content[${i}]`
@@ -158,52 +166,64 @@ export function adfRows(doc: AdfNode): DocRow[] {
                 : node.type === 'decisionList'
                   ? '◆'
                   : ['•', '◦', '▪'][ctx.depth % 3] ?? '•'
+          // A task list nested in a task list sits beside its items.
+          if (item.type === 'taskList' || item.type === 'bulletList' || item.type === 'orderedList') {
+            walk(item, itemPath, { ...ctx, depth: ctx.depth + 1 }, level + 1)
+            return
+          }
           if (item.type === 'taskItem' || item.type === 'decisionItem') {
             const spans = inline(item.content)
             row(spans, itemPath, { style: 'li', indent: ctx.depth, marker, ...(item.attrs?.state === 'DONE' ? { spans: spans.map(s => ({ ...s, d: 1 as const })) } : {}) })
             return
           }
-          ;(item.content ?? []).forEach((kid, j) => {
+          ;(item.content ?? []).filter(isNode).forEach((kid, j) => {
             const kidPath = `${itemPath}.content[${j}]`
             if (j === 0 && kid.type === 'paragraph') row(inline(kid.content), kidPath, { style: 'li', indent: ctx.depth, marker })
-            else walk(kid, kidPath, { ...ctx, depth: ctx.depth + 1 })
+            else walk(kid, kidPath, { ...ctx, depth: ctx.depth + 1 }, level + 1)
           })
         })
         return
       }
       case 'table': {
-        gap()
-        const cells = kids.map(r => (r.content ?? []).map(c => tidy((c.content ?? []).flatMap((part, k) => [...(k > 0 ? [{ t: ' ' }] : []), ...inline(part.content ?? [part])]))))
-        const header = (kids[0]?.content ?? []).every(c => c.type === 'tableHeader') ? 1 : 0
+        gap(rows)
+        const kidsOf = (n: AdfNode) => (Array.isArray(n.content) ? n.content : []).filter(isNode)
+        const cells = kids.map(r => kidsOf(r).map(c => tidy(kidsOf(c).flatMap((part, k) => [...(k > 0 ? [{ t: ' ' }] : []), ...inline(part.content ?? [part])]))))
+        const header = kids[0] && kidsOf(kids[0]).every(c => c.type === 'tableHeader') ? 1 : 0
         rows.push(...tableRows(cells, header, r => where(`${path}.content[${r}]`), 'node'))
-        gap()
+        gap(rows)
         return
       }
       case 'mediaSingle':
       case 'mediaGroup':
       case 'media': {
         const media = node.type === 'media' ? node : kids.find(kid => kid.type === 'media')
-        gap()
+        gap(rows)
         row([{ t: `▣ image${media?.attrs?.alt ? `: ${str(media.attrs.alt)}` : ''}`, d: 1 }], path, { style: 'p' })
         return
       }
       case 'extension':
       case 'bodiedExtension':
-        gap()
+        gap(rows)
         row([{ t: `⚙ ${str(node.attrs?.extensionKey) || 'macro'}`, d: 1 }], path, { style: 'p' })
         return
       case 'blockCard':
       case 'embedCard':
-        gap()
+        gap(rows)
         row([{ t: str(node.attrs?.url) || 'link', l: 1 }], path, { style: 'p' })
         return
-      default:
-        kids.forEach((kid, i) => walk(kid, `${path}.content[${i}]`, ctx))
+      default: {
+        // A block this reader does not know: its text as a paragraph, or its blocks.
+        if (kids.some(kid => INLINE_TYPES.has(kid.type ?? ''))) {
+          const spans = inline(kids)
+          if (plain(spans).trim() !== '') {
+            gap(rows)
+            row(spans, path, { style: styleFor() })
+          }
+        } else kids.forEach((kid, i) => into(kid, i, ctx))
+      }
     }
   }
 
   ;(doc.content ?? []).forEach((node, i) => walk(node, `content[${i}]`, { depth: 0 }))
-  while (rows[0]?.style === 'space') rows.shift()
-  while (rows[rows.length - 1]?.style === 'space') rows.pop()
-  return rows
+  return trimSpaces(rows)
 }
