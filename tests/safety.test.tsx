@@ -17,8 +17,8 @@ test('file text cannot pose as instructions: the excerpt is fenced and cannot cl
     return { isFilled: true }
   })
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/trap.txt' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/trap.txt' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await ui.post({ type: 'select', a: [1, 0], b: [2, 0] }, { in: 'viewer' })
   await ui.input({ key: 'comment-0', text: 'Tone this down' })
   await ui.press({ key: 'fill' })
@@ -35,16 +35,16 @@ test("Claude's tools open files in the working folder only; the person's command
   begin(on)
   on('fs.read', () => ({ value: '# Hi' }))
   await start($)
-  const inside = await $.tool.call({ tool: 'mcp__inline-doc-review__open_file', input: { path: 'notes/plan.md' } })
+  const inside = await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_file', input: { path: 'notes/plan.md' } })
   expect(inside.text).toContain('Opened /w/notes/plan.md')
-  const outside = await $.tool.call({ tool: 'mcp__inline-doc-review__open_file', input: { path: '/etc/app/config.json' } })
+  const outside = await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_file', input: { path: '/etc/app/config.json' } })
   expect(outside.isError).toBe(true)
-  expect(outside.text).toContain('/inline-review /etc/app/config.json')
-  const climbing = await $.tool.call({ tool: 'mcp__inline-doc-review__open_file', input: { path: '../other/secret.md' } })
+  expect(outside.text).toContain('/panda /etc/app/config.json')
+  const climbing = await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_file', input: { path: '../other/secret.md' } })
   expect(climbing.isError).toBe(true)
-  const hidden = await $.tool.call({ tool: 'mcp__inline-doc-review__open_file', input: { path: '.config/tokens.json' } })
+  const hidden = await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_file', input: { path: '.config/tokens.json' } })
   expect(hidden.isError).toBe(true)
-  const typed = await $.command.run({ command: 'inline-review', args: '/etc/app/config.json' })
+  const typed = await $.command.run({ command: 'panda', args: '/etc/app/config.json' })
   expect(typed.text).toBe('Review pane opened.')
 })
 
@@ -54,7 +54,7 @@ test('a file Claude wrote outside the working folder may be opened by its tools'
   on('tool.call', { tool: 'Write' }, () => ({ result: 'ok', text: 'ok' }))
   await start($)
   await $.tool.call({ tool: 'Write', input: { file_path: '/tmp/out/report.md', content: '# Report' } })
-  const ran = await $.tool.call({ tool: 'mcp__inline-doc-review__open_file', input: { path: '/tmp/out/report.md' } })
+  const ran = await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_file', input: { path: '/tmp/out/report.md' } })
   expect(ran.isError).toBeUndefined()
 })
 
@@ -69,8 +69,8 @@ test('a comment whose text was rewritten is flagged, and the prompt says so', as
     return { isFilled: true }
   })
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/n.txt' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/n.txt' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await commentOn(ui, 1, 'comment-0', 'Say more about beta')
   text = 'alpha\nBETA, rewritten\ngamma'
   mtime = 2
@@ -92,8 +92,8 @@ test('a comment follows its text down the file, and its label follows too', asyn
     return { isFilled: true }
   })
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/n.txt' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/n.txt' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await commentOn(ui, 2, 'comment-0', 'Change three')
   text = 'zero\nhalf\none\ntwo\nthree'
   mtime = 2
@@ -110,8 +110,8 @@ test('sent while Claude is busy: the running turn ending does not close the comm
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: 'done' }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/a.txt' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/a.txt' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await $.turn.start({ text: 'something else', turnId: 'busy' })
   await commentOn(ui, 0, 'comment-0', 'Fix a')
   await ui.press({ key: 'send' })
@@ -135,8 +135,8 @@ test('Edit before sending: comments wait in the prompt box, can come back, and g
   })
   on('prompt.submit', (_, e) => ({ text: e.text }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/a.txt' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/a.txt' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await commentOn(ui, 0, 'comment-0', 'Fix a')
   await ui.press({ key: 'fill' })
   // What the person had typed stays: the comments go after it.
@@ -155,8 +155,8 @@ test('a 3 MB Markdown file opens as plain text with a note, without hitting the 
   begin(on, { size: big.length })
   on('fs.read', () => ({ value: big }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/big.md' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/big.md' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /over 2 MB/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /first 20,000 of 60,000 rows/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Line 0 with \*\*bold\*\*/, in: 'viewer' })).toBeDefined()
@@ -165,8 +165,8 @@ test('a 3 MB Markdown file opens as plain text with a note, without hitting the 
 test('a text file over 10 MB is refused with a reason', async ($, on) => {
   begin(on, { size: 12_000_000 })
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/huge.csv' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/w/huge.csv' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /up to 10 MB/ })).toBeDefined()
 })
 

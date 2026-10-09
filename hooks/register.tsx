@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderSurface } from 'claude-code'
@@ -35,7 +35,7 @@ import type { SpinnerProps } from './spinner'
 import type { GridRow, LineRow, ViewerPost, ViewerProps } from './viewer'
 
 const PANE = 'review'
-const TITLE = 'Inline Review'
+const TITLE = 'Lazy Panda Panel'
 
 /** Files the pane can show, by extension. */
 const TEXT_KINDS = ['md', 'markdown', 'txt', 'html', 'htm', 'csv', 'json', 'yaml', 'yml', 'adf']
@@ -44,7 +44,7 @@ const SOURCE_KINDS = ['md', 'markdown', 'html', 'htm', 'adf', 'json']
 /** What auto-open considers a finished output worth opening. */
 const AUTO_KINDS = ['docx', 'pdf', 'png', 'html', 'htm', 'md', 'markdown', 'adf']
 const AUTO_MAX_FILES = 5
-/** Sample files shipped as text; /inline-review examples copies them out. */
+/** Sample files shipped as text; /panda examples copies them out. */
 const EXAMPLE_TEXTS = ['launch-plan.md', 'project-update.adf', 'pricing-page.html', 'meter-readings.csv']
 /** Comments listed under the document before the rest are counted. */
 const MAX_LISTED = 12
@@ -56,13 +56,13 @@ const MAX_ROWS = 20_000
 const IMAGE_MAX_BYTES = 2_000_000
 const SCAN_SKIP = new Set(['node_modules', '.git', '.venv', 'venv', 'dist', 'build', '__pycache__', '.next', '.cache'])
 
-const files = atom({ plugin: 'inline-doc-review', key: 'files' } as const, [])
-const open = atom({ plugin: 'inline-doc-review', key: 'open' } as const, { path: null, version: 0 })
-const view = atom({ plugin: 'inline-doc-review', key: 'view' } as const, { top: 0, left: 0, sheet: 0 })
-const selection = atom({ plugin: 'inline-doc-review', key: 'selection' } as const, null)
-const comments = atom({ plugin: 'inline-doc-review', key: 'comments' } as const, [])
-const autoOpen = atom({ plugin: 'inline-doc-review', key: 'autoOpen' } as const, false)
-const changed = atom({ plugin: 'inline-doc-review', key: 'changed' } as const, null)
+const files = atom({ plugin: 'lazy-panda-panel', key: 'files' } as const, [])
+const open = atom({ plugin: 'lazy-panda-panel', key: 'open' } as const, { path: null, version: 0 })
+const view = atom({ plugin: 'lazy-panda-panel', key: 'view' } as const, { top: 0, left: 0, sheet: 0 })
+const selection = atom({ plugin: 'lazy-panda-panel', key: 'selection' } as const, null)
+const comments = atom({ plugin: 'lazy-panda-panel', key: 'comments' } as const, [])
+const autoOpen = atom({ plugin: 'lazy-panda-panel', key: 'autoOpen' } as const, false)
+const changed = atom({ plugin: 'lazy-panda-panel', key: 'changed' } as const, null)
 
 const extOf = (path: string) => (path.match(/\.([^./]+)$/)?.[1] ?? '').toLowerCase()
 const isSupported = (path: string) => [...TEXT_KINDS, ...DOC_KINDS, 'png'].includes(extOf(path))
@@ -270,7 +270,7 @@ async function openPane($: EngineInterface) {
 
 const resolvePath = (path: string) => normalizePath(path.startsWith('/') ? path : `${session.cwd}/${path}`)
 
-/** What a person types after /inline-review: quotes stripped, ~ expanded. */
+/** What a person types after /panda: quotes stripped, ~ expanded. */
 function typedPath(text: string): string {
   const bare = text.trim().replace(/^(['"])(.*)\1$/, '$2')
   return resolvePath(bare === '~' || bare.startsWith('~/') ? `${session.home}${bare.slice(1)}` : bare)
@@ -279,7 +279,7 @@ function typedPath(text: string): string {
 /**
  * Whether the model's tools may open a path: a file under the working folder
  * (links resolved, no hidden folders), a file Claude wrote this session, or
- * one already open. Anything else the person opens with /inline-review.
+ * one already open. Anything else the person opens with /panda.
  */
 async function isAllowed($: EngineInterface, path: string): Promise<boolean> {
   if (session.claudeWrote.has(path) || (await read($, files)).includes(path)) return true
@@ -541,13 +541,13 @@ export const register: Register = on => {
     const stored = await $.store.get('autoOpen')
     await update($, autoOpen, () => stored === true)
     await $.command.register({
-      name: 'inline-review',
-      description: 'Open the inline review pane, or a file in it: /inline-review [file] · /inline-review examples · /inline-review auto on|off · /inline-review setup',
+      name: 'panda',
+      description: 'Open the Lazy Panda Panel, or a file in it: /panda [file] · /panda examples · /panda auto on|off · /panda setup',
       argumentHint: '[file | examples | auto on|off | setup]',
     })
     const where =
       'It opens files inside the working folder (not hidden folders), files you wrote this session, and files already open in the pane; ' +
-      'for anything else, ask the user to run /inline-review <path>.'
+      'for anything else, ask the user to run /panda <path>.'
     await $.tool.register({
       name: 'open_file',
       description:
@@ -580,21 +580,21 @@ export const register: Register = on => {
     return started
   })
 
-  on('command.run', { command: 'inline-review' }, async ($, e) => {
+  on('command.run', { command: 'panda' }, async ($, e) => {
     const args = e.args.trim()
     if (args === 'auto on' || args === 'auto off') {
       const isOn = args === 'auto on'
       await setAutoOpen($, isOn)
       return {
         text: isOn
-          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML or Markdown files, the inline review pane opens on them.`
-          : 'Auto-open is off. New files are listed in the pane; open it with /inline-review.',
+          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML or Markdown files, the Lazy Panda Panel opens on them.`
+          : 'Auto-open is off. New files are listed in the pane; open it with /panda.',
       }
     }
-    if (args === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /inline-review auto on|off.` }
+    if (args === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /panda auto on|off.` }
     if (args === 'examples' || args.startsWith('examples ')) {
       // Text samples ship with the plugin; the Excel and Word ones are generated, so the plugin holds no binaries.
-      const folder = typedPath(args.slice('examples'.length).trim() || 'inline-doc-review-examples')
+      const folder = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
       const written: string[] = []
       for (const name of EXAMPLE_TEXTS) {
         await $.fs.write(`${folder}/${name}`, await $.fs.read(`${$.plugin.root}/examples/${name}`))
@@ -608,14 +608,14 @@ export const register: Register = on => {
       await openPane($)
       return {
         text:
-          `Wrote ${written.length} sample files to ${folder} and opened them in the inline review pane.` +
-          (ran.exitCode === 0 ? '' : ' The Excel and Word samples need /inline-review setup first.'),
+          `Wrote ${written.length} sample files to ${folder} and opened them in the Lazy Panda Panel.` +
+          (ran.exitCode === 0 ? '' : ' The Excel and Word samples need /panda setup first.'),
       }
     }
     if (args === 'setup') {
       const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/extract.py`, 'setup'], { timeoutMs: 600_000 })
       return ran.exitCode === 0
-        ? { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in ~/.cache/inline-doc-review/venv. Word, Excel and PDF files can be shown now.' }
+        ? { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in ~/.cache/lazy-panda-panel/venv. Word, Excel and PDF files can be shown now.' }
         : { text: `Setup failed:\n${ran.stderr.trim().slice(-1500)}`, exitCode: 1 }
     }
     if (args) {
@@ -631,19 +631,19 @@ export const register: Register = on => {
     return { text: opened.isPlaced ? 'Review pane opened.' : 'Review pane is waiting for room: widen the terminal.' }
   })
 
-  on('tool.call', { tool: 'mcp__inline-doc-review__open_file' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__lazy-panda-panel__open_file' }, async ($, e) => {
     // A live session puts the arguments on the event; the test kit under `input`.
     const input = ((e as { input?: unknown }).input ?? e) as { path?: unknown }
     const path = typeof input.path === 'string' ? resolvePath(input.path) : ''
     if (!path || !(await $.fs.exists(path))) return reply(`No file at ${path || '(no path given)'}.`, true)
     if (!isSupported(path)) return reply(`The review pane does not show .${extOf(path)} files.`, true)
-    if (!(await isAllowed($, path))) return reply(`${path} is outside the working folder. Ask the user to open it with /inline-review ${path}`, true)
+    if (!(await isAllowed($, path))) return reply(`${path} is outside the working folder. Ask the user to open it with /panda ${path}`, true)
     await show($, path)
     const opened = await openPane($)
-    return reply(opened.isPlaced ? `Opened ${path} in the inline review pane.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /inline-review).`)
+    return reply(opened.isPlaced ? `Opened ${path} in the Lazy Panda Panel.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /panda).`)
   })
 
-  on('tool.call', { tool: 'mcp__inline-doc-review__open_files' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__lazy-panda-panel__open_files' }, async ($, e) => {
     const input = ((e as { input?: unknown }).input ?? e) as { paths?: unknown; replace?: unknown }
     const asked = Array.isArray(input.paths)
       ? [...new Set(input.paths.filter((p): p is string => typeof p === 'string').slice(0, MAX_FILES).map(resolvePath))]
@@ -666,7 +666,7 @@ export const register: Register = on => {
     await show($, first)
     const opened = await openPane($)
     return reply(
-      `Opened ${plural(usable.length, 'file')} in the inline review pane${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /inline-review)'}.` +
+      `Opened ${plural(usable.length, 'file')} in the Lazy Panda Panel${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /panda)'}.` +
         (skipped.length ? ` Skipped (missing, unsupported or outside the working folder): ${skipped.join(', ')}.` : ''),
     )
   })
@@ -735,9 +735,9 @@ export const register: Register = on => {
     if ((await read($, autoOpen)) && first && outputs.length <= AUTO_MAX_FILES) {
       if ((await read($, open)).path !== first) await show($, first)
       const opened = await openPane($)
-      if (!opened.isPlaced) $.ui.toast(`Review: ${baseName(first)} is ready. Run /inline-review to see it (the terminal is too narrow to open it by itself).`)
+      if (!opened.isPlaced) $.ui.toast(`Review: ${baseName(first)} is ready. Run /panda to see it (the terminal is too narrow to open it by itself).`)
     } else {
-      $.ui.status(`review: ${plural(made.length, 'file')} updated · /inline-review to open`)
+      $.ui.status(`review: ${plural(made.length, 'file')} updated · /panda to open`)
     }
     return done
   }).catch(($, e, next) => next(e))
@@ -889,8 +889,8 @@ function emptySection(ctx: Ctx): Section {
     bar: <Text> </Text>,
     body: (
       <Box flexDirection="column" paddingY={1}>
-        <Text bold color={ctx.pal.accent}>✦ Nothing to review yet</Text>
-        <Text color={ctx.pal.subtle}>Files Claude creates will open here. You can also run /inline-review and a file path,</Text>
+        <Text bold color={ctx.pal.accent}>✦ Nothing to review yet. The panda is napping.</Text>
+        <Text color={ctx.pal.subtle}>Files Claude creates will open here. You can also run /panda and a file path,</Text>
         <Text color={ctx.pal.subtle}>or ask Claude to "open" a file.</Text>
       </Box>
     ),

@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+# Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 """Generates tricky inputs for check_extract.py into the folder named by $IDR_INPUTS."""
 import datetime as dt
 import os

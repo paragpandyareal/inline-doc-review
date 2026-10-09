@@ -21,10 +21,10 @@ for (const [path, text] of CASES) {
     begin(on)
     on('fs.read', () => ({ value: text }))
     await start($)
-    await $.command.run({ command: 'inline-review', args: path })
+    await $.command.run({ command: 'panda', args: path })
     let error = ''
     try {
-      const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+      const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
       await ui.drawn()
     } catch (e) {
       error = String(e).slice(0, 160)
@@ -39,10 +39,10 @@ test('control characters: a grid cell with a tab / CR / ESC draws', async ($, on
   const doc = { kind: 'grid', sheets: [{ name: 'S', cols: ['A', 'B'], rows: [[{ v: 'H' }, { v: 'I' }], [{ v: 'a\tb' }, { v: 'c\r\nd' }], [{ v: 'x\u001b[1my' }, { v: 'z' }]], isCut: false }] }
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(doc), stderr: '' } }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/c.xlsx' })
+  await $.command.run({ command: 'panda', args: '/w/c.xlsx' })
   let error = ''
   try {
-    const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+    const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
     await ui.drawn()
   } catch (e) {
     error = String(e).slice(0, 160)

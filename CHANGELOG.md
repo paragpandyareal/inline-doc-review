@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — 2026-10-09
+
+**Renamed: Inline Doc Review is now Lazy Panda Panel.** The new name is distinctive, so it won't be confused with generic tools.
+
+- Plugin `lazy-panda-panel`, command `/panda` (was `/inline-review`), tools `mcp__lazy-panda-panel__open_file` and `open_files`.
+- The repository is now `paragpandyareal/lazy-panda-panel`. GitHub redirects the old URL.
+- The Python helpers now live in `~/.cache/lazy-panda-panel/venv`. Run `/panda setup` once, then you can delete `~/.cache/inline-doc-review`.
+- Existing users: install `lazy-panda-panel` and uninstall `inline-doc-review`. Claude Code treats a renamed plugin as a new one.
+
 ## 0.6.0 — 2026-10-09
 
 Security, reliability and clean-up, after independent security, QA, code-quality, transparency and simplification reviews (reports in `docs/reviews/`).

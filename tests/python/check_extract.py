@@ -1,9 +1,9 @@
 # Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+# Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 """Checks scripts/extract.py on tricky Word, Excel and PDF files.
 
-Run with the helper's Python (after /inline-review setup):
-    ~/.cache/inline-doc-review/venv/bin/python -I tests/python/check_extract.py
+Run with the helper's Python (after /panda setup):
+    ~/.cache/lazy-panda-panel/venv/bin/python -I tests/python/check_extract.py
 It writes its inputs to a temporary folder first (make_inputs.py). Prints PASS/FAIL per expectation."""
 import json, os, subprocess, sys, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+# Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 """Checks the safe formula calculator: run with `python3 -I tests/python/check_formulas.py`.
 
 It must calculate the functions it supports, and give None (not calculated)

@@ -15,11 +15,11 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
   })
 
   await start($)
-  const opened = await $.command.run({ command: 'inline-review', args: '/work/plan.txt' })
+  const opened = await $.command.run({ command: 'panda', args: '/work/plan.txt' })
   expect(opened.text).toBe('Review pane opened.')
 
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface, ...PANE })
+    const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface, ...PANE })
     expect(await ui.find({ type: 'Text', text: /We ship in May/, in: 'viewer' })).toBeDefined()
 
     // Drag across two lines (rows are 0-based): lines 3–4 here, lines 1–2 on the desktop.
@@ -33,7 +33,7 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
     await ui.unmount()
   }
 
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /Comments · 2/ })).toBeDefined()
   await ui.press({ key: 'fill' })
   expect(filled).toContain('File: `/work/plan.txt`\n   Location: lines 3–4')
@@ -45,10 +45,10 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
 test('auto-open is off until asked for, and the setting sticks', async ($, on) => {
   begin(on)
   await start($)
-  const before = await $.command.run({ command: 'inline-review', args: 'auto' })
+  const before = await $.command.run({ command: 'panda', args: 'auto' })
   expect(before.text).toContain('Auto-open is off')
-  await $.command.run({ command: 'inline-review', args: 'auto on' })
-  const after = await $.command.run({ command: 'inline-review', args: 'auto' })
+  await $.command.run({ command: 'panda', args: 'auto on' })
+  const after = await $.command.run({ command: 'panda', args: 'auto' })
   expect(after.text).toContain('Auto-open is on')
 })
 
@@ -58,9 +58,9 @@ test('a spreadsheet shows values, marks formulas, and shows the formula of the c
   begin(on)
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
 
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /50,700/, in: 'viewer' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /=SUM/, in: 'viewer' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^ ƒ$/, in: 'viewer' })).toBeDefined()
@@ -83,8 +83,8 @@ test('arrow keys in every direction, past every edge, never break the pane', asy
   begin(on)
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   // No selection yet: the first arrow starts the cursor.
   for (const key of ['up', 'up', 'left', 'left', 'down', 'down', 'down', 'down', 'down', 'down', 'down', 'right', 'right', 'right', 'right', 'right', 'right', 'pageup', 'pagedown', 'home', 'end', '[', ']', ']', 'backspace', 'up']) {
     await ui.key({ key, in: 'viewer' })
@@ -104,9 +104,9 @@ test('arrow keys on the file tabs move between files', async ($, on) => {
   on('fs.read', () => ({ value: NOTES }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/plan.txt' })
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/work/plan.txt' })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /50,700/, in: 'viewer' })).toBeDefined()
   await ui.key({ key: 'right', in: 'file-tabs' })
   expect(await ui.find({ type: 'Text', text: /We ship in May/, in: 'viewer' })).toBeDefined()
@@ -123,8 +123,8 @@ test('comment on C3, C4 and C6, then go back and edit one before sending', async
     return { isFilled: true }
   })
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
 
   // C3: click it, comment. Then the down arrow moves on to C4 from there.
   await ui.post({ type: 'select', a: [2, 2], b: [2, 2] }, { in: 'viewer' })
@@ -162,8 +162,8 @@ test('after sending, a spinner shows; when Claude changes the file, the changed 
   on('prompt.submit', ($, e) => ({ text: e.text }))
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(budget), stderr: '' } }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
 
   await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })
   await ui.input({ key: 'comment-0', text: 'Make this 900' })
@@ -189,9 +189,9 @@ test('opening files keeps the tab order, so → walks through them all', async (
   begin(on)
   on('fs.read', ($, e) => ({ value: `# ${String((e as { path?: string }).path ?? '')}` }))
   await start($)
-  for (const name of ['a.md', 'b.md', 'c.md']) await $.command.run({ command: 'inline-review', args: `/w/${name}` })
-  await $.command.run({ command: 'inline-review', args: '/w/a.md' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  for (const name of ['a.md', 'b.md', 'c.md']) await $.command.run({ command: 'panda', args: `/w/${name}` })
+  await $.command.run({ command: 'panda', args: '/w/a.md' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   for (const expected of ['b.md', 'c.md', 'a.md']) {
     await ui.key({ key: 'right', in: 'file-tabs' })
     expect(await ui.find({ type: 'Text', text: new RegExp(`/w/${expected.replace('.', '\\.')}`), in: 'viewer' })).toBeDefined()
@@ -202,11 +202,11 @@ test('open_files with replace makes exactly those tabs, in order, and clears old
   begin(on)
   on('fs.read', () => ({ value: '# Hello' }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/w/old.md' })
-  const ran = await $.tool.call({ tool: 'mcp__inline-doc-review__open_files', input: { paths: ['/w/one.md', '/w/two.md', '/w/nope.exe'], replace: true } })
+  await $.command.run({ command: 'panda', args: '/w/old.md' })
+  const ran = await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_files', input: { paths: ['/w/one.md', '/w/two.md', '/w/nope.exe'], replace: true } })
   expect(ran.text).toContain('Opened 2 files')
   expect(ran.text).toContain('/w/nope.exe.')
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   // Closed, the bar shows only the open file; ↓ drops down the list of all of them.
   expect(JSON.stringify(await ui.drawn({ in: 'file-tabs' }))).not.toContain('two.md')
   await ui.key({ key: 'down', in: 'file-tabs' })
@@ -220,8 +220,8 @@ test('the file bar: one line, a dropdown to jump, and ← → to step', async ($
   begin(on)
   on('fs.read', ($, e) => ({ value: `# Title of ${String((e as { path?: string }).path ?? '')}` }))
   await start($)
-  await $.tool.call({ tool: 'mcp__inline-doc-review__open_files', input: { paths: ['/w/a.md', '/w/b.md', '/w/c.md', '/w/d.md'], replace: true } })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.tool.call({ tool: 'mcp__lazy-panda-panel__open_files', input: { paths: ['/w/a.md', '/w/b.md', '/w/c.md', '/w/d.md'], replace: true } })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   const bar = async () => JSON.stringify(await ui.drawn({ in: 'file-tabs' }))
   expect(await bar()).toContain('a.md')
   expect(await bar()).toContain(' 1/4 ')
@@ -268,8 +268,8 @@ test('an edit made by a command refreshes the open file at once; the spinner cle
     return { result: 'ok', text: 'ok' }
   })
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })
   await ui.input({ key: 'comment-0', text: 'Make this 810' })
   await ui.press({ key: 'send' })
@@ -288,8 +288,8 @@ test('when Claude finishes without changing the file, sent comments stop showing
   on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
   on('turn.complete', () => ({ text: 'done' }))
   await start($)
-  await $.command.run({ command: 'inline-review', args: '/work/pilot-budget.xlsx' })
-  const ui = await $.ui.mount({ plugin: 'inline-doc-review', surface: 'terminal', ...PANE })
+  await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   await ui.post({ type: 'select', a: [1, 1], b: [1, 1] }, { in: 'viewer' })
   await ui.input({ key: 'comment-0', text: 'Is this right?' })
   await ui.press({ key: 'send' })

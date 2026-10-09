@@ -1,11 +1,11 @@
 {
-  "name": "inline-doc-review",
-  "displayName": "Inline Doc Review",
-  "version": "0.6.0",
-  "description": "Review what Claude makes without leaving Claude Code: Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG open in a pane, you highlight a part and comment, and Claude edits the real file.",
+  "name": "lazy-panda-panel",
+  "displayName": "Lazy Panda Panel",
+  "version": "0.7.0",
+  "description": "Point at it, say what’s wrong, and Claude edits the real file. Lazy, but it works. Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files open in a pane inside Claude Code.",
   "author": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
-  "homepage": "https://github.com/paragpandyareal/inline-doc-review",
-  "repository": "https://github.com/paragpandyareal/inline-doc-review",
+  "homepage": "https://github.com/paragpandyareal/lazy-panda-panel",
+  "repository": "https://github.com/paragpandyareal/lazy-panda-panel",
   "license": "MIT",
   "keywords": ["review", "comments", "excel", "word", "pdf", "markdown", "confluence", "adf", "pane", "mod"],
   "types": "./types/index.d.ts"

@@ -1,4 +1,4 @@
-# Inline Doc Review: project handover
+# Lazy Panda Panel: project handover
 
 Read this first when picking the project up in a new Claude Code session. The independent review and fix round (security, QA, code quality, transparency, simplification) is **done** in 0.6.0; see [REVIEW-PLAN.md](REVIEW-PLAN.md) and the reports in `reviews/`. This file covers what exists, where it lives, how it got here and why, and what's next.
 
@@ -6,28 +6,28 @@ _Last updated: 2026-10-09, at version 0.6.0._
 
 ## In one paragraph
 
-Inline Doc Review is a Claude Code mod built by Parag Pandya, a PM, for people who use Claude Code for business work. Their outputs are Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files. The pane opens those files inside Claude Code, formatted the way business readers expect. You highlight a part (cells, lines, paragraphs, an image), write comments, and send them all to Claude, which edits the real file. The pane then shows what changed. The owner's bar for the look: *"unless it's visually amazing and pretty, no one will like it even if it's useful."*
+Lazy Panda Panel is a Claude Code mod built by Parag Pandya, a PM, for people who use Claude Code for business work. Their outputs are Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files. The pane opens those files inside Claude Code, formatted the way business readers expect. You highlight a part (cells, lines, paragraphs, an image), write comments, and send them all to Claude, which edits the real file. The pane then shows what changed. The owner's bar for the look: *"unless it's visually amazing and pretty, no one will like it even if it's useful."*
 
 ## Where things are
 
 | What | Where |
 |---|---|
-| Source of truth | `/home/parag/inline-doc-review` (git repository) |
-| GitHub | https://github.com/paragpandyareal/inline-doc-review (public). The repo is its own marketplace. |
-| Install for anyone | `/plugin install inline-doc-review --marketplace paragpandyareal/inline-doc-review`, then `/inline-review setup` once |
-| Develop with hot reload | `claude --plugin-dir /home/parag/inline-doc-review`, or install as above and use `/reload-plugins` after edits |
-| Python helper venv | `~/.cache/inline-doc-review/venv` (python-docx, openpyxl, pypdf; hash-locked in `scripts/requirements.txt`) |
+| Source of truth | `/home/parag/lazy-panda-panel` (git repository) |
+| GitHub | https://github.com/paragpandyareal/lazy-panda-panel (public). The repo is its own marketplace. |
+| Install for anyone | `/plugin install lazy-panda-panel --marketplace paragpandyareal/lazy-panda-panel`, then `/panda setup` once |
+| Develop with hot reload | `claude --plugin-dir /home/parag/lazy-panda-panel`, or install as above and use `/reload-plugins` after edits |
+| Python helper venv | `~/.cache/lazy-panda-panel/venv` (python-docx, openpyxl, pypdf; hash-locked in `scripts/requirements.txt`) |
 | Sample files | `examples/`; also `/home/parag/review-pane-samples/` on the VPS |
 | Architecture | [HOW-IT-WORKS.md](HOW-IT-WORKS.md) |
 
-The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<session-id>/inline-doc-review`). Those folders only load in the session that made them, so **always work from `/home/parag/inline-doc-review`**.
+The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<session-id>/lazy-panda-panel`). Those folders only load in the session that made them, so **always work from `/home/parag/lazy-panda-panel`**.
 
 ## How it got here: the timeline and the why
 
 1. **Idea.** The owner wanted the files Claude produces to open in a pane inside Claude Code, without hunting for them in folders. Opening a named file on request was part of it too.
 2. **First plan: edit in the pane.** For HTML/MD the plan was text editing; for Word/Excel, structured editing. A deep check showed Word and Excel editing by hand in a terminal would be "half-baked": openpyxl drops charts, and formulas don't recalculate.
 3. **Pivot: highlight, comment, Claude edits.** This became the core design. The pane is read-only. Comments carry exact anchors and quotes, and Claude does the edit with the right library.
-4. **The `/review` name clash.** The engine refused `/review` because it collides with the built-in `/code-review`. That broke `session.start` silently, so the `open_file` tool was missing too. Renamed to `/inline-review`.
+4. **The `/review` name clash.** The engine refused `/review` because it collides with the built-in `/code-review`. That broke `session.start` silently, so the `open_file` tool was missing too. Renamed to `/inline-review` (now `/panda`).
 5. **Excel formulas.** The owner wanted calculated values, not `=SUM(…)`. Files written by openpyxl carry no cached results, so `pycel` now computes them locally. Formula cells are coloured (owner's request: "different colour") and marked `ƒ`. A formula bar shows the clicked cell's formula.
 6. **First UX review** (UX/UI expert agent): one frame instead of boxes in boxes, no emoji in layout, sheet tabs under the grid, an Excel-style formula bar with Σ and average, verb-first copy ("Send 2 comments to Claude", "Edit before sending").
 7. **Crash and recovery.** The owner pressed arrow keys and "lost everything". The causes:
@@ -46,7 +46,7 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
     - Big-sheet indicators (owner: "people may miss that there is other content").
     - The changed-cell green glow, the send spinner, the comment-marker pop and the sliding tab underline.
 11. **Tab order fix.** Opening a file used to move it to the front, so → bounced between two files. The order is now stable.
-12. **Published** to GitHub as its own marketplace, with docs. Renamed from Review Pane to Inline Doc Review (0.5.0).
+12. **Published** to GitHub as its own marketplace, with docs. Renamed from Review Pane to Inline Doc Review (0.5.0), then to **Lazy Panda Panel** (0.7.0): a distinctive name, so the directory won't hold it as generic, and a nod to the owner's surname.
 13. **Independent reviews and fixes (0.6.0).** Five reviews were run: security, QA, code quality, transparency and simplification. The main changes:
     - pycel (which compiled formulas into Python and ran them) was replaced by a small safe calculator.
     - Setup dependencies are hash-locked.
@@ -82,21 +82,21 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
 
 ## How to work on it in a new session
 
-1. `cd /home/parag/inline-doc-review && git pull`
-2. Start Claude Code with `claude --plugin-dir /home/parag/inline-doc-review`, or install from the marketplace.
+1. `cd /home/parag/lazy-panda-panel && git pull`
+2. Start Claude Code with `claude --plugin-dir /home/parag/lazy-panda-panel`, or install from the marketplace.
 3. Read `docs/HOW-IT-WORKS.md`, then `hooks/register.tsx`, which holds the layout in `ui.render`.
 4. After changes: `claude plugin validate .` and `claude plugin test .`, then bump the version in `.claude-plugin/plugin.json` **and** `.claude-plugin/marketplace.json`, update `CHANGELOG.md`, commit and push.
-5. Users get updates with `claude plugin update inline-doc-review`, then `/reload-plugins`.
+5. Users get updates with `claude plugin update lazy-panda-panel`, then `/reload-plugins`.
 
 ## Start a new session on this project
 
 From the VPS shell:
 
 ```bash
-cd /home/parag/inline-doc-review && git pull && claude --plugin-dir /home/parag/inline-doc-review "Read docs/HANDOVER.md and docs/HOW-IT-WORKS.md, then let's continue on Inline Doc Review"
+cd /home/parag/lazy-panda-panel && git pull && claude --plugin-dir /home/parag/lazy-panda-panel "Read docs/HANDOVER.md and docs/HOW-IT-WORKS.md, then let's continue on Lazy Panda Panel"
 ```
 
-`--plugin-dir` loads this working copy (and hot-reloads it as files change), so the session both runs and develops the mod. The demo files for screen recordings are in `/home/parag/energy-regs-demo/`. Ask Claude to "open the demo files in the inline review pane".
+`--plugin-dir` loads this working copy (and hot-reloads it as files change), so the session both runs and develops the mod. The demo files for screen recordings are in `/home/parag/energy-regs-demo/`. Ask Claude to "open the demo files in the Lazy Panda Panel".
 
 ## Publishing to Anthropic's directory (when the owner decides)
 
@@ -118,14 +118,14 @@ cd /home/parag/inline-doc-review && git pull && claude --plugin-dir /home/parag/
 | No credentials, no network calls of its own | ✔ |
 
 **Possible reviewer holds (not blockers):**
-- **Generic name:** `inline-doc-review` is made of generic words, so the portal may hold it as "Name may be confused with an existing listing". A reviewer then decides. If the owner wants to avoid that, rename **before the first listing** (for example `parag-inline-doc-review`), since names are permanent once people install.
-- **Package installs:** `/inline-review setup` downloads from PyPI. Everything is hash-locked, but a reviewer may still note it.
+- **Name:** renamed to `lazy-panda-panel` in 0.7.0 so it's distinctive (no GitHub repo had that name). Keep it from the first listing onward: names are permanent once people install.
+- **Package installs:** `/panda setup` downloads from PyPI. Everything is hash-locked, but a reviewer may still note it.
 - **A hook on every tool call:** it is a passthrough, and the README says so.
 
 **Steps:**
 1. Bump `version` in `.claude-plugin/plugin.json` and `marketplace.json`, update `CHANGELOG.md`, then commit and push.
 2. Sign in to claude.ai with a paid plan and open [claude.ai/directory/manage](https://claude.ai/directory/manage).
-3. **Submit new** → **Plugin bundle** → repository `paragpandyareal/inline-doc-review`, branch `main`, plugin path: the repository root.
+3. **Submit new** → **Plugin bundle** → repository `paragpandyareal/lazy-panda-panel`, branch `main`, plugin path: the repository root.
 4. Press **Validate**. Fix anything marked **Blocking**, push, then **Re-validate**.
 5. Submit. After that the security scan and review run; the developer portal shows progress.
 6. For later versions, bump `version` and push; the directory picks up new commits on the followed branch.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 
 import type { ClientModule } from 'claude-code'
 

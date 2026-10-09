@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 
 /** A run of text inside a row with its emphasis: bold, italic, code, link, strike, dim. */
 export type Span = { t: string; b?: 1; i?: 1; c?: 1; l?: 1; s?: 1; d?: 1 }
@@ -109,7 +109,7 @@ export type View = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'inline-doc-review': {
+    'lazy-panda-panel': {
       files: string[]
       /** The file shown, and a counter bumped each time it is (re)read; the document itself is held by the hooks module. */
       open: { path: string | null; version: number }

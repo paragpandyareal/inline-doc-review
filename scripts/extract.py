@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
-"""Reads a document for the inline review pane and prints it as JSON.
+# Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
+"""Reads a document for the Lazy Panda Panel and prints it as JSON.
 
     extract.py docx|pdf|xlsx <path>   one document, read only
     extract.py setup                   makes the venv the pane reads with
 
-The libraries live in a venv of their own (~/.cache/inline-doc-review/venv),
+The libraries live in a venv of their own (~/.cache/lazy-panda-panel/venv),
 installed from requirements.txt with exact versions and sha256 hashes, so
 nothing is installed into the system Python. Each run re-executes itself
 under that venv when it exists. Nothing here touches the network except
@@ -22,7 +22,7 @@ import sys
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VENV = os.path.join(os.path.expanduser("~"), ".cache", "inline-doc-review", "venv")
+VENV = os.path.join(os.path.expanduser("~"), ".cache", "lazy-panda-panel", "venv")
 VENV_PY = os.path.join(VENV, "bin", "python")
 REQUIREMENTS = os.path.join(HERE, "requirements.txt")
 
@@ -75,7 +75,7 @@ def setup():
 def missing(package):
     return {
         "kind": "error",
-        "message": f"Reading this file needs the Python package '{package}'. Run /inline-review setup once to install it.",
+        "message": f"Reading this file needs the Python package '{package}'. Run /panda setup once to install it.",
     }
 
 

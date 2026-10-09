@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
-"""Writes the sample Excel and Word files for /inline-review examples.
+# Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
+"""Writes the sample Excel and Word files for /panda examples.
 
     make_examples.py <folder>
 
 The samples are generated rather than shipped, so the plugin itself holds
-only text files. Runs under the inline-doc-review venv (/inline-review setup), which
+only text files. Runs under the lazy-panda-panel venv (/panda setup), which
 has openpyxl and python-docx. Prints the files it wrote, one per line.
 """
 import os
 import random
 import sys
 
-VENV = os.path.join(os.path.expanduser("~"), ".cache", "inline-doc-review", "venv")
+VENV = os.path.join(os.path.expanduser("~"), ".cache", "lazy-panda-panel", "venv")
 VENV_PY = os.path.join(VENV, "bin", "python")
 
 

@@ -1,13 +1,13 @@
 {
-  "name": "inline-doc-review",
+  "name": "lazy-panda-panel",
   "owner": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
-  "metadata": { "description": "Review pane for Claude Code: comment on the files Claude makes, and Claude applies the feedback." },
+  "metadata": { "description": "Point at it, say what’s wrong, and Claude edits the real file. Lazy, but it works. Comment on the files Claude makes, and Claude applies the feedback." },
   "plugins": [
     {
-      "name": "inline-doc-review",
+      "name": "lazy-panda-panel",
       "source": "./",
       "description": "Open Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files in a pane, highlight a part, comment, and send the feedback to Claude.",
-      "version": "0.6.0"
+      "version": "0.7.0"
     }
   ]
 }

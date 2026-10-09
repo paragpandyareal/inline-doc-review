@@ -1,6 +1,6 @@
-# How Inline Doc Review works
+# How Lazy Panda Panel works
 
-Inline Doc Review is a Claude Code **mod**: a plugin made of *function hooks* (TypeScript that runs inside Claude Code) rather than shell-command hooks. It draws a pane, listens to what Claude does, and hands your comments back to Claude as a prompt.
+Lazy Panda Panel is a Claude Code **mod**: a plugin made of *function hooks* (TypeScript that runs inside Claude Code) rather than shell-command hooks. It draws a pane, listens to what Claude does, and hands your comments back to Claude as a prompt.
 
 ## The loop
 
@@ -33,7 +33,7 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/md.ts`, `html.ts`, `adf.ts` | hooks environment | Read Markdown, HTML and ADF into formatted rows (`DocRow`) |
 | `hooks/format.ts` | hooks environment | Shared reader helpers: inline Markdown, table layout, gaps |
 | `hooks/palette.ts` | hooks environment | Colours by `/config` theme, and file-type badges |
-| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. It switches into `~/.cache/inline-doc-review/venv` once `/inline-review setup` has made it, but only if no one else can write to it. |
+| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. It switches into `~/.cache/lazy-panda-panel/venv` once `/panda setup` has made it, but only if no one else can write to it. |
 | `scripts/formulas.py` | a Python process | A small, safe formula calculator for formulas with no saved result (files written by openpyxl never have one). It reads formulas and never runs them as code. |
 | `scripts/requirements.txt` | — | The setup packages, pinned and hash-locked |
 | `types/index.d.ts` | — | The state contract. Every `$.state` value and its type. |
@@ -74,13 +74,13 @@ A comment holds its file, sheet, range, label, **the text it quotes**, and your 
 `feedbackPrompt` builds one message:
 - A header that says what follows is data. Each item has `File:`, `Location:`, the quote inside `<file-excerpt>` with every line prefixed `> `, and then `Feedback:`.
 - A `</file-excerpt` inside the file is neutralised, control characters are stripped, and the excerpt is capped at 1,200 characters and labels at 200.
-- The header `Review feedback from the Inline Doc Review pane.` is how the hooks recognise the pane's own prompts.
+- The header `Review feedback from the Lazy Panda Panel.` is how the hooks recognise the pane's own prompts.
 
 ## Hooks
 
 | Hook | Why |
 |---|---|
-| `session.start` | Registers `/inline-review` and the two tools. Reads the theme, the auto-open setting and the working folder's real path. Rereads the open file and drops sends whose turn this module can no longer follow. Starts the 2-second timer. |
+| `session.start` | Registers `/panda` and the two tools. Reads the theme, the auto-open setting and the working folder's real path. Rereads the open file and drops sends whose turn this module can no longer follow. Starts the 2-second timer. |
 | `tool.call` (all tools) | A passthrough: it never blocks or changes a call. After Write, Edit, MultiEdit or NotebookEdit it notes the file. After Bash it rereads listed files whose modification time changed, then scans the working folder for new documents (not in the home folder or `/`, not for subagents). |
 | `tool.call` (`open_file`, `open_files`) | The model's tools, confined to the working folder, files Claude wrote, and files already open |
 | timer (every 2 s) | Stats the listed files (at most 30) and rereads any whose modification time changed. A missing file shows "deleted or moved". |
@@ -111,21 +111,21 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 
 ```bash
 # Load your working copy in a session (hot-reloads as you save)
-claude --plugin-dir /path/to/inline-doc-review
+claude --plugin-dir /path/to/lazy-panda-panel
 
 claude plugin validate .      # what the engine will load, and what it would refuse
 claude plugin test .          # the 84 tests
 python3 -I tests/python/check_formulas.py
-~/.cache/inline-doc-review/venv/bin/python -I tests/python/check_extract.py
+~/.cache/lazy-panda-panel/venv/bin/python -I tests/python/check_extract.py
 ```
 
 To type-check, Claude Code writes its API types to `.claude-plugin/types/` once it has loaded the mod. Then run `tsc -p .`.
 
 Gotchas we hit:
 - **Helpers must be declared at the top of a file.** Any function a hook passes `$` to has to be declared at the top level of the module, or the validator refuses it.
-- **Atom references need literals:** `atom({ plugin: 'inline-doc-review', key: 'files' } as const, …)`.
+- **Atom references need literals:** `atom({ plugin: 'lazy-panda-panel', key: 'files' } as const, …)`.
 - **Client props can't hold `undefined`.** Leave the field out instead, or the pane refuses the tree.
-- **Choose command names with care.** The engine refused `/review` because it clashes with the built-in `/code-review`. That's why the command is `/inline-review`.
+- **Choose command names with care.** The engine refused `/review` because it clashes with the built-in `/code-review`. That's why the command is `/panda`.
 - **`$` can't be put in an object.** Pass it as an argument to each top-level function instead.
 - **Register test mocks before the first `$` call.** `tests/setup.ts` has `begin(on)` for the mocks and `start($)` to start the session in `/w`.
 - **The test kit needs mocks for side effects.** It has no fs, process or clock: answer `fs.read`, `process.run` and the rest in the test, and use `mock.store(on)` and `mock.clock(on)`.

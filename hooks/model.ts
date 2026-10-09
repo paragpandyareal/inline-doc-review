@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
-// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 
 import type { Doc, DocRow, GridCell, GridSheet, ReviewComment, ReviewSelection, Span } from '../types'
 import { plain, tableRows, tidy } from './format'
@@ -341,7 +341,7 @@ export function reanchor(c: ReviewComment, d: Doc): ReviewComment {
 // ── The prompt ──
 
 /** The first line of every prompt the pane sends; how its own prompts are recognised. */
-export const PROMPT_HEADER = 'Review feedback from the Inline Doc Review pane.'
+export const PROMPT_HEADER = 'Review feedback from the Lazy Panda Panel.'
 
 const MAX_EXCERPT = 1200
 const MAX_FEEDBACK = 4000

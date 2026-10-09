@@ -1,5 +1,5 @@
-# Inline Doc Review: Python packages for reading Word, Excel and PDF files.
-# Installed by `/inline-review setup` with: pip install --require-hashes --only-binary=:all: --no-deps -r requirements.txt
+# Lazy Panda Panel: Python packages for reading Word, Excel and PDF files.
+# Installed by `/panda setup` with: pip install --require-hashes --only-binary=:all: --no-deps -r requirements.txt
 # Every direct and transitive dependency is pinned to an exact version, and pip refuses any file whose
 # sha256 is not listed here (hashes from PyPI, one per published wheel). No source builds.
 
