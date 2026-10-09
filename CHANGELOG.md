@@ -7,6 +7,13 @@
 - Plugin `lazy-panda-panel`, command `/panda` (was `/inline-review`), tools `mcp__lazy-panda-panel__open_file` and `open_files`.
 - The repository is now `paragpandyareal/lazy-panda-panel`. GitHub redirects the old URL.
 - The Python helpers now live in `~/.cache/lazy-panda-panel/venv`. Run `/panda setup` once, then you can delete `~/.cache/inline-doc-review`.
+- For the directory review:
+  - Every command the mod runs is now fixed text; file paths go to the Python helper on standard input.
+  - The tool hooks name only `Bash`, `Write`, `Edit` and `NotebookEdit`, not every tool.
+  - The mod reads no environment variables, so `~` is no longer expanded in `/panda` paths; type the full path.
+  - `/panda examples` now has the bundled Python script write the samples, so the mod itself writes no files.
+  - The README has a section on exactly what the mod hooks, runs, sends and writes.
+  - There is a listing icon.
 - A pixel-art panda, drawn in half-block characters like Claude Code's own mascot, naps in the empty pane and sits at the top of the README.
 - Existing users: install `lazy-panda-panel` and uninstall `inline-doc-review`. Claude Code treats a renamed plugin as a new one.
 

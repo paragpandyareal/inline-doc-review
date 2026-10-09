@@ -45,8 +45,6 @@ const SOURCE_KINDS = ['md', 'markdown', 'html', 'htm', 'adf', 'json']
 /** What auto-open considers a finished output worth opening. */
 const AUTO_KINDS = ['docx', 'pdf', 'png', 'html', 'htm', 'md', 'markdown', 'adf']
 const AUTO_MAX_FILES = 5
-/** Sample files shipped as text; /panda examples copies them out. */
-const EXAMPLE_TEXTS = ['launch-plan.md', 'project-update.adf', 'pricing-page.html', 'meter-readings.csv']
 /** Comments listed under the document before the rest are counted. */
 const MAX_LISTED = 12
 const MAX_FILES = 30
@@ -81,7 +79,6 @@ const session = {
   cwd: '',
   /** The working folder with links resolved: the model's tools open files under it. */
   realCwd: '',
-  home: '',
   theme: 'dark',
   /** Supported files written this turn, for auto-open; and this session, which the tools may open wherever they are. */
   turnFiles: new Set<string>(),
@@ -126,7 +123,14 @@ async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise
       return { kind: 'image', path, png: base64, width: word(16) || 1, height: word(20) || 1 }
     }
     if (DOC_KINDS.includes(ext)) {
-      const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/extract.py`, ext, path], { timeoutMs: 60_000 })
+      // Each command is fixed text, run in the plugin's folder; the document's path goes on standard input.
+      const init = { cwd: $.plugin.root, stdin: path, timeoutMs: 60_000 }
+      const ran =
+        ext === 'xlsx'
+          ? await $.process.run(['python3', './scripts/extract.py', 'xlsx'], init)
+          : ext === 'docx'
+            ? await $.process.run(['python3', './scripts/extract.py', 'docx'], init)
+            : await $.process.run(['python3', './scripts/extract.py', 'pdf'], init)
       if (ran.exitCode !== 0) return { kind: 'error', path, message: sanitizeLine((ran.stderr || ran.stdout).trim().split('\n').slice(-3).join(' '), 600) }
       const parsed = JSON.parse(ran.stdout) as Doc
       // The helper cleans what it reads; this pass makes sure, since a cell or row can hold anything.
@@ -269,12 +273,15 @@ async function openPane($: EngineInterface) {
 
 // ── Paths and watching ──
 
+/** A home folder (/home/<name>, /Users/<name>, /root) or the root: too broad to scan. */
+const isHomeOrRoot = (dir: string) => dir === '' || dir === '/' || /^\/(?:home|Users)\/[^/]+\/?$|^\/root\/?$/.test(dir)
+
 const resolvePath = (path: string) => normalizePath(path.startsWith('/') ? path : `${session.cwd}/${path}`)
 
-/** What a person types after /panda: quotes stripped, ~ expanded. */
+/** What a person types after /panda: surrounding quotes stripped. */
 function typedPath(text: string): string {
   const bare = text.trim().replace(/^(['"])(.*)\1$/, '$2')
-  return resolvePath(bare === '~' || bare.startsWith('~/') ? `${session.home}${bare.slice(1)}` : bare)
+  return resolvePath(bare)
 }
 
 /**
@@ -516,10 +523,19 @@ async function onViewerPost($: EngineInterface, post: ViewerPost, surface: Rende
   }
 }
 
+/** After Claude writes or edits a file: note it, and reread it if it is open. Returns the tool's own result. */
+async function afterEdit<R extends { deny?: unknown; isError?: unknown }>($: EngineInterface, e: object, ran: R): Promise<R> {
+  if (ran.deny === undefined && !ran.isError) {
+    const input = ((e as { input?: unknown }).input ?? e) as { file_path?: unknown; notebook_path?: unknown }
+    const path = input.file_path ?? input.notebook_path
+    if (typeof path === 'string') await noteFile($, path)
+  }
+  return ran
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     session.cwd = e.cwd
-    session.home = (await $.env.get('HOME')) ?? ''
     session.realCwd = await $.fs
       .stat(e.cwd, { resolve: true })
       .then(st => st.realPath ?? e.cwd)
@@ -594,15 +610,11 @@ export const register: Register = on => {
     }
     if (args === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /panda auto on|off.` }
     if (args === 'examples' || args.startsWith('examples ')) {
-      // Text samples ship with the plugin; the Excel and Word ones are generated, so the plugin holds no binaries.
+      // The bundled script writes the samples: it copies the text ones and generates the Excel and Word ones.
       const folder = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
-      const written: string[] = []
-      for (const name of EXAMPLE_TEXTS) {
-        await $.fs.write(`${folder}/${name}`, await $.fs.read(`${$.plugin.root}/examples/${name}`))
-        written.push(`${folder}/${name}`)
-      }
-      const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/make_examples.py`, folder], { timeoutMs: 120_000 })
-      if (ran.exitCode === 0) written.unshift(...ran.stdout.trim().split('\n').filter(Boolean))
+      const ran = await $.process.run(['python3', './scripts/make_examples.py'], { cwd: $.plugin.root, stdin: folder, timeoutMs: 120_000 })
+      const written = ran.stdout.trim().split('\n').filter(line => line.startsWith('/'))
+      if (written.length === 0) return { text: `Could not write the samples: ${sanitizeLine(ran.stderr.trim().slice(-400))}`, exitCode: 1 }
       await update($, files, () => written)
       await update($, comments, old => old.filter(c => c.status === 'sent'))
       if (written[0]) await show($, written[0])
@@ -614,7 +626,7 @@ export const register: Register = on => {
       }
     }
     if (args === 'setup') {
-      const ran = await $.process.run(['python3', `${$.plugin.root}/scripts/extract.py`, 'setup'], { timeoutMs: 600_000 })
+      const ran = await $.process.run(['python3', './scripts/extract.py', 'setup'], { cwd: $.plugin.root, timeoutMs: 600_000 })
       return ran.exitCode === 0
         ? { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in ~/.cache/lazy-panda-panel/venv. Word, Excel and PDF files can be shown now.' }
         : { text: `Setup failed:\n${ran.stderr.trim().slice(-1500)}`, exitCode: 1 }
@@ -689,31 +701,24 @@ export const register: Register = on => {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('tool.call', async ($, e, next) => {
-    const tool = String(e.tool)
-    const isMain = (e as { agentId?: string }).agentId === undefined
-    if (tool === 'Bash') {
-      const since = (await $.clock.now()) - 1000
-      const ran = await next(e)
-      // Listed files first: a direct check, so an edit made by a script shows at once.
-      for (const path of await refreshChanged($)) session.turnFiles.add(path)
-      // Then new files in the working folder; never the home folder or the root, nor for a subagent.
-      if (isMain && session.cwd !== session.home && session.cwd !== '/' && session.cwd !== '') {
-        const listed = new Set(await read($, files))
-        const found: string[] = []
-        await scan($, session.cwd, since, 3, found, { left: 4000 })
-        for (const path of found.filter(one => !listed.has(one)).slice(0, 20)) await noteFile($, path)
-      }
-      return ran
-    }
+  // Only the tools that change files are watched; each is passed on unchanged, and what it returns is returned.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const since = (await $.clock.now()) - 1000
     const ran = await next(e)
-    if ((tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit' || tool === 'NotebookEdit') && ran.deny === undefined && !ran.isError) {
-      const input = ((e as { input?: unknown }).input ?? e) as { file_path?: unknown; notebook_path?: unknown }
-      const path = input.file_path ?? input.notebook_path
-      if (typeof path === 'string') await noteFile($, path)
+    // Listed files first: a direct check, so an edit made by a script shows at once.
+    for (const path of await refreshChanged($)) session.turnFiles.add(path)
+    // Then new files in the working folder; never a home folder or the root, nor for a subagent.
+    if (e.agentId === undefined && !isHomeOrRoot(session.cwd)) {
+      const listed = new Set(await read($, files))
+      const found: string[] = []
+      await scan($, session.cwd, since, 3, found, { left: 4000 })
+      for (const path of found.filter(one => !listed.has(one)).slice(0, 20)) await noteFile($, path)
     }
     return ran
   }).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'Write' }, async ($, e, next) => afterEdit($, e, await next(e))).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'Edit' }, async ($, e, next) => afterEdit($, e, await next(e))).catch(($, e, next) => next(e))
+  on('tool.call', { tool: 'NotebookEdit' }, async ($, e, next) => afterEdit($, e, await next(e))).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
@@ -771,7 +776,6 @@ export const register: Register = on => {
     const { path, version } = await read($, open)
     const ctx: Ctx = {
       els,
-      Client,
       Input,
       Image,
       surface: e.surface,
@@ -805,17 +809,26 @@ export const register: Register = on => {
     const rule = <Text color={ctx.pal.dim}>{'─'.repeat(ctx.columns)}</Text>
     const actions = actionsRow($, ctx)
     const keyLine = keysRow(ctx, section.keys ?? [])
+    const sent = ctx.notes.filter(c => c.status === 'sent').length
+    // The three drawing modules, each named by a fixed path; a surface without Client gets plain text.
     return (
       <Box flexDirection="column" width={ctx.columns}>
-        {topBar(ctx)}
+        {Client ? <Client key="file-tabs" module="./filebar.tsx" props={fileBarProps(ctx)} /> : <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>}
         {section.bar}
         {rule}
-        {section.body}
+        {Client && section.viewer ? <Client key="viewer" module="./viewer.tsx" props={section.viewer.props} height={section.viewer.height} /> : section.body}
         {section.after ?? null}
         {section.footnote ? <Text color={ctx.pal.warning} wrap="truncate-end">{section.footnote}</Text> : null}
         <Box marginTop={1}>{commentRow($, ctx)}</Box>
         <Box marginTop={1}>{commentList($, ctx)}</Box>
         {actions && <Box marginTop={1}>{actions}</Box>}
+        {Client && sent > 0 ? (
+          <Client
+            key="spinner"
+            module="./spinner.tsx"
+            props={{ text: `Claude is working on ${plural(sent, 'comment')}…`, color: ctx.pal.claude, glow: ctx.pal.warning } satisfies SpinnerProps}
+          />
+        ) : null}
         {keyLine && (
           <Box marginTop={1} flexDirection="column">
             {rule}
@@ -832,7 +845,6 @@ export const register: Register = on => {
 type Els = ReturnType<EngineInterface['ui']['resolve']>
 type Ctx = {
   els: Els
-  Client: Elements['terminal']['Client'] | undefined
   Input: Elements['terminal']['Input'] | undefined
   Image: Elements['terminal']['Image'] | undefined
   surface: RenderSurface
@@ -849,7 +861,15 @@ type Ctx = {
   change: { path: string; key: number; rows: number[]; cells: string[] } | null
   isAuto: boolean
 }
-type Section = { bar: JSX.Element; body: JSX.Element; after?: JSX.Element | null; footnote?: string; keys?: [string, string][] }
+/** A section's parts; `viewer` is what the document view draws, where the surface has one (`body` is drawn otherwise). */
+type Section = {
+  bar: JSX.Element
+  body: JSX.Element
+  viewer?: { props: ViewerProps; height: number }
+  after?: JSX.Element | null
+  footnote?: string
+  keys?: [string, string][]
+}
 
 /**
  * Rows the document may use: what the pane has, less the bars, the comment
@@ -857,31 +877,21 @@ type Section = { bar: JSX.Element; body: JSX.Element; after?: JSX.Element | null
  */
 const docHeight = (ctx: Ctx, extra: number, listed: number) => clamp(ctx.bodyRows - (13 + extra + listed) + 1, 5, 60)
 
-function topBar(ctx: Ctx) {
-  const { Client, pal, path, d, v, list } = ctx
-  const { Text } = ctx.els
-  if (!Client) return <Text bold>{baseName(path ?? 'Review')}</Text>
+function fileBarProps(ctx: Ctx): FileBarProps {
+  const { pal, path, d, v, list } = ctx
   const asides: NonNullable<FileBarProps['asides']> = []
   if (d?.kind === 'lines' && d.hasSource) asides.push({ id: 'source', label: v.raw ? '◧ Formatted' : '‹› Source', short: v.raw ? '◧' : '‹›', color: pal.subtle })
   if (path) asides.push({ id: 'reload', label: '⟳ Reload', short: '⟳', color: pal.subtle })
   asides.push({ id: 'auto', label: ctx.isAuto ? '● Auto-open' : '○ Auto-open', short: ctx.isAuto ? '●' : '○', color: ctx.isAuto ? pal.success : pal.dim, isBold: ctx.isAuto })
   const badge = path ? BADGES[extOf(path)] : undefined
-  return (
-    <Client
-      key="file-tabs"
-      module="./filebar.tsx"
-      props={
-        {
-          files: list.map(one => ({ name: baseName(one), color: BADGES[extOf(one)]?.bg ?? pal.dim })),
-          active: Math.max(0, list.indexOf(path ?? '')),
-          width: ctx.columns,
-          colors: { accent: pal.accent, text: pal.text, subtle: pal.subtle, dim: pal.dim, band: pal.band },
-          ...(badge ? { badge } : {}),
-          asides,
-        } satisfies FileBarProps
-      }
-    />
-  )
+  return {
+    files: list.map(one => ({ name: baseName(one), color: BADGES[extOf(one)]?.bg ?? pal.dim })),
+    active: Math.max(0, list.indexOf(path ?? '')),
+    width: ctx.columns,
+    colors: { accent: pal.accent, text: pal.text, subtle: pal.subtle, dim: pal.dim, band: pal.band },
+    ...(badge ? { badge } : {}),
+    asides,
+  }
 }
 
 function emptySection(ctx: Ctx): Section {
@@ -969,7 +979,7 @@ function layoutOf(d: LinesDoc, version: number, columns: number, isRaw: boolean)
 
 function linesSection(ctx: Ctx, d: LinesDoc, listed: number): Section {
   const { Box, Text } = ctx.els
-  const { pal, v, sel, notes, Client, columns } = ctx
+  const { pal, v, sel, notes, columns } = ctx
   const height = docHeight(ctx, d.note ? 1 : 0, listed)
   const { lines, firstVisual, stripe, gutter, textWidth } = layoutOf(d, ctx.version, columns, v.raw === true)
   drawnBy.set(ctx.surface, { total: lines.length, firstVisual, height, shownCols: 1 })
@@ -1013,22 +1023,11 @@ function linesSection(ctx: Ctx, d: LinesDoc, listed: number): Section {
         <Text color={pal.dim}>{percent >= 100 ? 'All shown' : `${percent}% · PgDn for more`}</Text>
       </Box>
     )
-  const body =
-    rows.length === 0 ? (
-      <Text color={pal.dim}>This file is empty.</Text>
-    ) : Client ? (
-      <Client
-        key="viewer"
-        module="./viewer.tsx"
-        props={{ mode: 'lines', pal, rows, gutter, width: textWidth, flashKey: freshKey } satisfies ViewerProps}
-        height={rows.length}
-      />
-    ) : (
-      <Text>{rows.map(row => row.t).join('\n')}</Text>
-    )
+  const body = rows.length === 0 ? <Text color={pal.dim}>This file is empty.</Text> : <Text>{rows.map(row => row.t).join('\n')}</Text>
   return {
     bar,
     body,
+    ...(rows.length > 0 ? { viewer: { props: { mode: 'lines', pal, rows, gutter, width: textWidth, flashKey: freshKey }, height: rows.length } } : {}),
     ...(d.note ? { footnote: d.note } : {}),
     keys: [
       ['click', unit === 'lines' ? 'a line' : 'a paragraph'],
@@ -1042,7 +1041,7 @@ function linesSection(ctx: Ctx, d: LinesDoc, listed: number): Section {
 
 function gridSection($: EngineInterface, ctx: Ctx, d: GridDoc, listed: number): Section {
   const { Box, Text, Button } = ctx.els
-  const { pal, v, sel, notes, Client, columns } = ctx
+  const { pal, v, sel, notes, columns } = ctx
   const sheetIndex = clamp(v.sheet, 0, Math.max(0, d.sheets.length - 1))
   const sheet = d.sheets[sheetIndex]
   if (!sheet) return { bar: <Text color={pal.dim}>This workbook has no sheets.</Text>, body: <Text> </Text> }
@@ -1182,14 +1181,8 @@ function gridSection($: EngineInterface, ctx: Ctx, d: GridDoc, listed: number): 
       </Box>
     )
   }
-  const body =
-    rows.length === 0 && !isHeader ? (
-      <Text color={pal.dim}>This sheet is empty.</Text>
-    ) : Client ? (
-      <Client key="viewer" module="./viewer.tsx" props={props} height={1 + (isHeader ? 2 : 0) + rows.length + (props.moreBelow > 0 ? 1 : 0)} />
-    ) : (
-      <Text>{rows.map(row => row.cells.join('  ')).join('\n')}</Text>
-    )
+  const isEmpty = rows.length === 0 && !isHeader
+  const body = isEmpty ? <Text color={pal.dim}>This sheet is empty.</Text> : <Text>{rows.map(row => row.cells.join('  ')).join('\n')}</Text>
   const after = (
     <Box key="sheets" flexDirection="row" flexWrap="wrap" columnGap={2} marginTop={1}>
       <Text color={pal.dim}>Sheets:</Text>
@@ -1208,6 +1201,7 @@ function gridSection($: EngineInterface, ctx: Ctx, d: GridDoc, listed: number): 
   return {
     bar,
     body,
+    ...(isEmpty ? {} : { viewer: { props, height: 1 + (isHeader ? 2 : 0) + rows.length + (props.moreBelow > 0 ? 1 : 0) } }),
     after,
     ...(footnote ? { footnote } : {}),
     keys: [
@@ -1323,10 +1317,9 @@ function commentList($: EngineInterface, ctx: Ctx) {
 
 function actionsRow($: EngineInterface, ctx: Ctx) {
   const { Box, Text, Button } = ctx.els
-  const { pal, Client } = ctx
+  const { pal } = ctx
   const drafts = ctx.notes.filter(c => c.status === 'draft').length
   const queued = ctx.notes.filter(c => c.status === 'queued').length
-  const sent = ctx.notes.filter(c => c.status === 'sent').length
   const parts: JSX.Element[] = []
   if (drafts > 0) {
     parts.push(
@@ -1342,15 +1335,6 @@ function actionsRow($: EngineInterface, ctx: Ctx) {
         <Text color={pal.subtle}>✎ {plural(queued, 'comment')} in the prompt box: press Enter there to send</Text>
         <Button key="unqueue" label="↩ back to drafts" plain onPress={() => void backToDrafts($)} />
       </Box>,
-    )
-  }
-  if (sent > 0 && Client) {
-    parts.push(
-      <Client
-        key="spinner"
-        module="./spinner.tsx"
-        props={{ text: `Claude is working on ${plural(sent, 'comment')}…`, color: pal.claude, glow: pal.warning } satisfies SpinnerProps}
-      />,
     )
   }
   return parts.length === 0 ? null : <Box flexDirection="column">{parts}</Box>

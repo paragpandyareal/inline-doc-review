@@ -11,6 +11,7 @@ has openpyxl and python-docx. Prints the files it wrote, one per line.
 """
 import os
 import random
+import shutil
 import sys
 
 VENV = os.path.join(os.path.expanduser("~"), ".cache", "lazy-panda-panel", "venv")
@@ -110,14 +111,34 @@ def proposal(path):
     d.save(path)
 
 
+EXAMPLE_TEXTS = ["launch-plan.md", "project-update.adf", "pricing-page.html", "meter-readings.csv"]
+
+
 def main():
     reexec_in_venv()
-    folder = sys.argv[1]
+    # The folder comes as the argument, or on standard input (how the pane sends it).
+    folder = sys.argv[1] if len(sys.argv) > 1 else sys.stdin.read().strip()
     os.makedirs(folder, exist_ok=True)
+    written = []
+    needs_setup = False
+    # Excel and Word samples are generated, so the plugin ships no binaries; they need /panda setup.
     for name, make in [("pilot-budget.xlsx", budget), ("site-consumption.xlsx", big_sheet), ("energy-proposal.docx", proposal)]:
         path = os.path.join(folder, name)
-        make(path)
-        print(path)
+        try:
+            make(path)
+            written.append(path)
+        except ImportError:
+            needs_setup = True
+    # The text samples ship with the plugin, in examples/.
+    shipped = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "examples")
+    for name in EXAMPLE_TEXTS:
+        path = os.path.join(folder, name)
+        shutil.copyfile(os.path.join(shipped, name), path)
+        written.append(path)
+    print("\n".join(written))
+    if needs_setup:
+        print("The Excel and Word samples need /panda setup first.", file=sys.stderr)
+        sys.exit(3)
 
 
 if __name__ == "__main__":

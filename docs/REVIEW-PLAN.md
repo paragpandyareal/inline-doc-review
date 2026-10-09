@@ -93,7 +93,7 @@ State on 2026-10-08:
 - The session mods folder copy at `~/.claude/dev-mods/b1ed36d2-1ff9-41ca-a06c-9b3fc7b4f03b/inline-doc-review` must be resynced from the repo after changes. Also set `/tmp/claude-1001/rp-tscheck/tsconfig.json` for the type-check: its include points at the plugin-authoring `types/claude-code.d.ts`, `hooks` and `types`.
 
 Useful API facts:
-- `$.env.get("HOME")` exists.
+- `$.env.get("HOME")` exists (no longer used since 0.7.0: the directory treats environment reads as credential reads).
 - `tool.call` events carry `agentId` when they come from a subagent.
 - `$.prompt.read()` gives `{text, cursor}`.
 - `fs.stat(path, {resolve:true})` gives `realPath`.

@@ -138,6 +138,49 @@ Lazy Panda Panel is a Claude Code *mod*. That means code that runs inside Claude
 
 It never edits your documents, never makes network requests of its own (apart from setup), and has no telemetry or accounts. To see its hooks and calls for yourself, run `claude plugin validate <plugin folder>`. [SECURITY.md](SECURITY.md) has the threat model.
 
+### Exactly what the mod hooks, runs, sends and writes
+
+This section is for anyone reviewing the code, including Anthropic's directory review. Everything below is in `hooks/register.tsx`.
+
+**Hooks.** None of these blocks, approves or rewrites anything. Each passes the event on unchanged and returns what Claude Code returns, except where noted.
+
+| Hook | What it does with what it sees |
+|---|---|
+| `session.start` | Registers the `/panda` command and the two tools below, reads the `theme` setting, and starts the 2-second check of listed files |
+| `command.run` for `panda` only | Answers its own `/panda` command. It doesn't see or change other commands. |
+| `tool.call` for `Bash` | After the command has run, rereads listed files that changed and lists the working folder for new documents (see the table above) |
+| `tool.call` for `Write`, `Edit` and `NotebookEdit` | After the tool has run, notes the file it wrote so the pane can show it |
+| `tool.call` for `mcp__lazy-panda-panel__open_file` and `mcp__lazy-panda-panel__open_files` | These are **this plugin's own tools**, registered with `$.tool.register`, so this hook is their implementation and answers in their place. It opens files in the pane and returns a one-line status, never file content. They stand in for no other tool. |
+| `prompt.submit` | Reads the text being submitted only to recognise the pane's own prompt (its first line), so it can mark those comments as sent. Never changes the prompt. |
+| `turn.start`, `turn.complete` | Note when Claude's turn starts and ends, to clear the "Claude is working" spinner and for auto-open |
+| `ui.render`, `ui.message` | Draw the pane and handle clicks and keys, for this plugin's own pane only |
+
+**Programs it runs.** Only `python3`, and only these commands, each written as fixed text and run in the plugin's own folder:
+
+| Command | When | What it does |
+|---|---|---|
+| `python3 ./scripts/extract.py xlsx`, `… docx`, `… pdf` | When you open a Word, Excel or PDF file | Reads that file and prints its content as JSON for the pane. The file's path goes in on standard input. Nothing leaves your machine. |
+| `python3 ./scripts/extract.py setup` | Only when you run `/panda setup` | Creates `~/.cache/lazy-panda-panel/venv` and runs `pip install --require-hashes --only-binary=:all: --no-deps -r scripts/requirements.txt`. That downloads the pinned, hash-checked packages from PyPI (pypi.org and files.pythonhosted.org). **This is the only network access.** |
+| `python3 ./scripts/make_examples.py` | Only when you run `/panda examples` | Writes sample files into the folder you name (path on standard input): it copies the text samples from `examples/` and generates the Excel and Word ones |
+
+The mod calls no tools itself and runs no slash commands itself.
+
+**What it sends, and where.** The mod has no server and makes no network requests. It sends text in one place only: a prompt to Claude in your own session, through `$.prompt.submit` (when you press Send) or `$.prompt.fill` (Edit before sending). That prompt holds:
+- a fixed header saying the excerpts are data;
+- for each comment, the file's path, the place in it, the quoted part of the file (at most 1,200 characters) and the comment you typed.
+
+It reads your prompt box (`$.prompt.read`) only so "Edit before sending" adds to what you typed rather than replacing it. What it reads from your files is shown in the pane. Only the excerpts you comment on go anywhere, and only in that prompt.
+
+**What it writes.** The mod itself writes no files. The Python helper writes only:
+- the venv, on `/panda setup`;
+- sample files, into the folder you name, on `/panda examples`.
+
+The auto-open setting is kept in Claude Code's own plugin store. Nothing writes build, start-up, settings or instruction files.
+
+**Credentials.** It reads no environment variables, tokens or keys.
+
+**The `tests/` folder.** This holds the automated tests, run with `claude plugin test`. Claude Code never loads them when you use the plugin. To simulate Claude Code, the tests' mock hooks stand in for `tool.call`, `process.run`, `tool.register` and other events, and the tests call tools and the `/panda` command themselves.
+
 ### Things to know
 - **Documents can contain text written to trick an AI.** Quoted text is fenced and marked as data, which helps, but no fence is perfect. For files from people you don't know, use **Edit before sending** and read the prompt first.
 - Before you run `/panda setup`, the helper uses your system `python3` and any `python-docx`, `openpyxl` or `pypdf` already installed there.

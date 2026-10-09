@@ -82,7 +82,7 @@ A comment holds its file, sheet, range, label, **the text it quotes**, and your 
 | Hook | Why |
 |---|---|
 | `session.start` | Registers `/panda` and the two tools. Reads the theme, the auto-open setting and the working folder's real path. Rereads the open file and drops sends whose turn this module can no longer follow. Starts the 2-second timer. |
-| `tool.call` (all tools) | A passthrough: it never blocks or changes a call. After Write, Edit, MultiEdit or NotebookEdit it notes the file. After Bash it rereads listed files whose modification time changed, then scans the working folder for new documents (not in the home folder or `/`, not for subagents). |
+| `tool.call` (`Bash`, `Write`, `Edit`, `NotebookEdit`) | A passthrough: it never blocks or changes a call. After Write, Edit or NotebookEdit it notes the file. After Bash it rereads listed files whose modification time changed, then scans the working folder for new documents (not in the home folder or `/`, not for subagents). |
 | `tool.call` (`open_file`, `open_files`) | The model's tools, confined to the working folder, files Claude wrote, and files already open |
 | timer (every 2 s) | Stats the listed files (at most 30) and rereads any whose modification time changed. A missing file shows "deleted or moved". |
 | `prompt.submit` | Resets the turn's file list; turns queued comments into a sent batch |

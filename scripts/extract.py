@@ -415,10 +415,12 @@ def main():
         return
     reexec_in_venv()
     sys.path.insert(0, HERE)
-    if len(sys.argv) != 3 or sys.argv[1] not in ("docx", "pdf", "xlsx"):
-        print(json.dumps({"kind": "error", "message": "Usage: extract.py docx|pdf|xlsx <path>"}))
+    # The document's path comes as the second argument, or on standard input (how the pane sends it).
+    if len(sys.argv) not in (2, 3) or sys.argv[1] not in ("docx", "pdf", "xlsx"):
+        print(json.dumps({"kind": "error", "message": "Usage: extract.py docx|pdf|xlsx [path] (or the path on standard input)"}))
         return
-    kind, path = sys.argv[1], sys.argv[2]
+    kind = sys.argv[1]
+    path = sys.argv[2] if len(sys.argv) == 3 else sys.stdin.read().strip()
     try:
         doc = {"docx": docx_rows, "pdf": pdf_rows, "xlsx": xlsx_sheets}[kind](path)
     except Exception as error:  # a corrupt, locked or oversized file: say so in the pane
