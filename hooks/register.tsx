@@ -817,16 +817,16 @@ export const register: Register = on => {
     let spinner = null
     if (e.surface === 'terminal' || e.surface === 'desktop') {
       const { Client } = $.ui.resolve(e)
-      fileBar = <Client key="file-tabs" module="./filebar.tsx" props={fileBarProps(ctx)} />
-      if (section.viewer) document = <Client key="viewer" module="./viewer.tsx" props={section.viewer.props} height={section.viewer.height} />
+      const barProps: FileBarProps = fileBarProps(ctx)
+      fileBar = <Client module="./filebar.tsx" key="file-tabs" props={barProps} />
+      if (section.viewer) {
+        const viewerProps: ViewerProps = section.viewer.props
+        const viewerHeight = section.viewer.height
+        document = <Client module="./viewer.tsx" key="viewer" props={viewerProps} height={viewerHeight} />
+      }
       if (sent > 0) {
-        spinner = (
-          <Client
-            key="spinner"
-            module="./spinner.tsx"
-            props={{ text: `Claude is working on ${plural(sent, 'comment')}…`, color: ctx.pal.claude, glow: ctx.pal.warning } satisfies SpinnerProps}
-          />
-        )
+        const spinnerProps: SpinnerProps = { text: `Claude is working on ${plural(sent, 'comment')}…`, color: ctx.pal.claude, glow: ctx.pal.warning }
+        spinner = <Client module="./spinner.tsx" key="spinner" props={spinnerProps} />
       }
     }
     return (
