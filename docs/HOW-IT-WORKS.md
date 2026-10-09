@@ -38,7 +38,7 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `scripts/formulas.py` | a Python process | A small, safe formula calculator for formulas with no saved result (files written by openpyxl never have one). It reads formulas and never runs them as code. |
 | `scripts/requirements.txt` | — | The setup packages, pinned and hash-locked |
 | `types/index.d.ts` | — | The state contract. Every `$.state` value and its type. |
-| `tests/*.test.tsx` | `claude plugin test` | 86 tests: each file type, the comment flow, keys, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, reader edge cases (from the QA review) |
+| `tests/*.test.tsx` | `claude plugin test` | 85 tests: each file type, the comment flow, keys, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, reader edge cases (from the QA review) |
 | `tests/python/*.py` | Python | `check_formulas.py` (the calculator, including hostile formulas) and `check_extract.py` (tricky Word, Excel and PDF files, generated on the fly) |
 
 ## The document model
@@ -115,7 +115,7 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 claude --plugin-dir /path/to/lazy-panda-panel
 
 claude plugin validate .      # what the engine will load, and what it would refuse
-claude plugin test .          # the 86 tests
+claude plugin test .          # the 85 tests
 python3 -I tests/python/check_formulas.py
 ~/.cache/lazy-panda-panel/venv/bin/python -I tests/python/check_extract.py
 ```
