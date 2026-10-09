@@ -188,6 +188,8 @@ The auto-open setting is kept in Claude Code's own plugin store. Nothing writes 
 
 ## Privacy
 
+Full policy: [Privacy policy](https://github.com/paragpandyareal/lazy-panda-panel/blob/main/PRIVACY.md).
+
 - The plugin collects nothing. It sends nothing to its author or to anyone else.
 - When you send comments, they and the quoted text become a normal prompt in your Claude Code session. They go to Anthropic under your account, like anything you type, and are kept in your session transcript.
 - On your machine it stores the auto-open setting (in Claude Code's plugin store) and the Python venv. Open files and comments last for the session only.

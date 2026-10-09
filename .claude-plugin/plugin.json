@@ -3,10 +3,25 @@
   "displayName": "Lazy Panda Panel",
   "version": "0.7.0",
   "description": "Review docs without lifting a paw. Your files open right where you’re working. Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG: highlight a part, comment, and Claude edits the real file.",
-  "author": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
+  "author": {
+    "name": "Parag Pandya",
+    "url": "https://github.com/paragpandyareal"
+  },
   "homepage": "https://github.com/paragpandyareal/lazy-panda-panel",
   "repository": "https://github.com/paragpandyareal/lazy-panda-panel",
   "license": "MIT",
-  "keywords": ["review", "comments", "excel", "word", "pdf", "markdown", "confluence", "adf", "pane", "mod"],
-  "types": "./types/index.d.ts"
+  "keywords": [
+    "review",
+    "comments",
+    "excel",
+    "word",
+    "pdf",
+    "markdown",
+    "confluence",
+    "adf",
+    "pane",
+    "mod"
+  ],
+  "types": "./types/index.d.ts",
+  "privacyPolicyUrl": "https://github.com/paragpandyareal/lazy-panda-panel/blob/main/PRIVACY.md"
 }
