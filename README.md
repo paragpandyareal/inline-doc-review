@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/panda.png" width="176" alt="The Lazy Panda Panel panda: pixel art of a sleepy panda face"></p>
+
 # Lazy Panda Panel for Claude Code
 
 > *Review docs without lifting a paw. Your files open right where you’re working.* 🐼

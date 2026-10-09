@@ -29,6 +29,7 @@ import {
   strWidth,
   wrapRows,
 } from './model'
+import { pandaRows } from './panda'
 import { BADGES, paletteFor } from './palette'
 import type { Palette } from './palette'
 import type { SpinnerProps } from './spinner'
@@ -885,13 +886,31 @@ function topBar(ctx: Ctx) {
 
 function emptySection(ctx: Ctx): Section {
   const { Box, Text } = ctx.els
+  const panda = pandaRows()
   return {
     bar: <Text> </Text>,
     body: (
-      <Box flexDirection="column" paddingY={1}>
-        <Text bold color={ctx.pal.accent}>✦ Nothing to review yet. The panda is napping.</Text>
-        <Text color={ctx.pal.subtle}>Files Claude creates will open here. You can also run /panda and a file path,</Text>
-        <Text color={ctx.pal.subtle}>or ask Claude to "open" a file.</Text>
+      <Box flexDirection="row" columnGap={3} paddingY={1}>
+        <Box flexDirection="column">
+          {panda.map((runs, y) => (
+            <Text key={`panda-${y}`}>
+              {runs.map((run, x) => (
+                <Text key={`p${x}`} {...(run.color ? { color: run.color } : {})} {...(run.background ? { backgroundColor: run.background } : {})}>
+                  {run.text}
+                </Text>
+              ))}
+            </Text>
+          ))}
+        </Box>
+        <Box flexDirection="column">
+          <Text color={ctx.pal.subtle}>      z</Text>
+          <Text color={ctx.pal.subtle}>    Z</Text>
+          <Text color={ctx.pal.subtle}>  z</Text>
+          <Text> </Text>
+          <Text bold color={ctx.pal.accent}>Nothing to review yet. The panda is napping.</Text>
+          <Text color={ctx.pal.subtle}>Files Claude creates will open here.</Text>
+          <Text color={ctx.pal.subtle}>Or run /panda and a file path, or ask Claude to "open" a file.</Text>
+        </Box>
       </Box>
     ),
   }

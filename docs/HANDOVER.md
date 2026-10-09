@@ -60,7 +60,7 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
 ## Current status
 
 - **Done and tested:**
-  - 84 tests in `tests/`: every file type, the comment flow, keys, tab order, the source switch, the glow and spinner, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, and the QA reader cases.
+  - 86 tests in `tests/`: every file type, the comment flow, keys, tab order, the source switch, the glow and spinner, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, and the QA reader cases.
   - Two Python checks in `tests/python/`: the formula calculator (21 checks, including hostile formulas) and the extraction of tricky Word, Excel and PDF files (19 checks).
 - **Seen live:** the owner used the Excel flow live up to 0.5.0. **0.6.0 has passed the test kit but not yet been used live.** Ask the owner to try it.
 - **Owner's terminal:** reported `TERM=xterm-256color` at 80 columns, so PNG pictures show as text there; only kitty or Ghostty draw them.

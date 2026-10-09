@@ -32,12 +32,13 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `hooks/spinner.tsx` | drawing thread | "Claude is working on N comments…" |
 | `hooks/md.ts`, `html.ts`, `adf.ts` | hooks environment | Read Markdown, HTML and ADF into formatted rows (`DocRow`) |
 | `hooks/format.ts` | hooks environment | Shared reader helpers: inline Markdown, table layout, gaps |
+| `hooks/panda.ts` | hooks environment | The panda: pixel art drawn with half blocks (`▀▄`), two pixels per character, so it shows in any terminal |
 | `hooks/palette.ts` | hooks environment | Colours by `/config` theme, and file-type badges |
 | `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. It switches into `~/.cache/lazy-panda-panel/venv` once `/panda setup` has made it, but only if no one else can write to it. |
 | `scripts/formulas.py` | a Python process | A small, safe formula calculator for formulas with no saved result (files written by openpyxl never have one). It reads formulas and never runs them as code. |
 | `scripts/requirements.txt` | — | The setup packages, pinned and hash-locked |
 | `types/index.d.ts` | — | The state contract. Every `$.state` value and its type. |
-| `tests/*.test.tsx` | `claude plugin test` | 84 tests: each file type, the comment flow, keys, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, reader edge cases (from the QA review) |
+| `tests/*.test.tsx` | `claude plugin test` | 86 tests: each file type, the comment flow, keys, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, reader edge cases (from the QA review) |
 | `tests/python/*.py` | Python | `check_formulas.py` (the calculator, including hostile formulas) and `check_extract.py` (tricky Word, Excel and PDF files, generated on the fly) |
 
 ## The document model
@@ -114,7 +115,7 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 claude --plugin-dir /path/to/lazy-panda-panel
 
 claude plugin validate .      # what the engine will load, and what it would refuse
-claude plugin test .          # the 84 tests
+claude plugin test .          # the 86 tests
 python3 -I tests/python/check_formulas.py
 ~/.cache/lazy-panda-panel/venv/bin/python -I tests/python/check_extract.py
 ```

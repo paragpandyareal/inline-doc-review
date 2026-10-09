@@ -297,3 +297,14 @@ test('when Claude finishes without changing the file, sent comments stop showing
   await $.turn.complete({ answer: 'It is right.', durationMs: 10, isAborted: false, turnId: 't1', reason: 'end_turn' } as never)
   expect(await ui.find({ key: 'spinner' })).toBeUndefined()
 })
+
+test('an empty pane shows the napping panda', async ($, on) => {
+  begin(on)
+  await start($)
+  await $.command.run({ command: 'panda', args: '' })
+  const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: /The panda is napping/ })).toBeDefined()
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('▀')
+  expect(drawn).toContain('#19191C')
+})
