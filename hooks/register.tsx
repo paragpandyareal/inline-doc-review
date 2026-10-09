@@ -771,10 +771,7 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
-    // Client and Input are on the terminal and desktop, Image on the terminal alone.
-    // Client comes straight from $.ui.resolve(e), so its modules can be read off this file; vscode and mobile have none.
-    // @ts-expect-error Client is not in every surface's table: it is drawn only where hasViews says the surface has it.
-    const { Client } = $.ui.resolve(e)
+    // Input is on the terminal and desktop, Image on the terminal alone.
     const { Input, Image } = els as Partial<Elements['terminal']>
     const hasViews = e.surface === 'terminal' || e.surface === 'desktop'
     const { path, version } = await read($, open)
@@ -814,25 +811,36 @@ export const register: Register = on => {
     const actions = actionsRow($, ctx)
     const keyLine = keysRow(ctx, section.keys ?? [])
     const sent = ctx.notes.filter(c => c.status === 'sent').length
-    // The three drawing modules, each named by a fixed path; a surface without Client gets plain text.
-    return (
-      <Box flexDirection="column" width={ctx.columns}>
-        {hasViews ? <Client key="file-tabs" module="./filebar.tsx" props={fileBarProps(ctx)} /> : <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>}
-        {section.bar}
-        {rule}
-        {hasViews && section.viewer ? <Client key="viewer" module="./viewer.tsx" props={section.viewer.props} height={section.viewer.height} /> : section.body}
-        {section.after ?? null}
-        {section.footnote ? <Text color={ctx.pal.warning} wrap="truncate-end">{section.footnote}</Text> : null}
-        <Box marginTop={1}>{commentRow($, ctx)}</Box>
-        <Box marginTop={1}>{commentList($, ctx)}</Box>
-        {actions && <Box marginTop={1}>{actions}</Box>}
-        {hasViews && sent > 0 ? (
+    // The three drawing modules, each named by a fixed path, on the surfaces that draw them; elsewhere, plain text.
+    let fileBar = <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>
+    let document = section.body
+    let spinner = null
+    if (e.surface === 'terminal' || e.surface === 'desktop') {
+      const { Client } = $.ui.resolve(e)
+      fileBar = <Client key="file-tabs" module="./filebar.tsx" props={fileBarProps(ctx)} />
+      if (section.viewer) document = <Client key="viewer" module="./viewer.tsx" props={section.viewer.props} height={section.viewer.height} />
+      if (sent > 0) {
+        spinner = (
           <Client
             key="spinner"
             module="./spinner.tsx"
             props={{ text: `Claude is working on ${plural(sent, 'comment')}…`, color: ctx.pal.claude, glow: ctx.pal.warning } satisfies SpinnerProps}
           />
-        ) : null}
+        )
+      }
+    }
+    return (
+      <Box flexDirection="column" width={ctx.columns}>
+        {fileBar}
+        {section.bar}
+        {rule}
+        {document}
+        {section.after ?? null}
+        {section.footnote ? <Text color={ctx.pal.warning} wrap="truncate-end">{section.footnote}</Text> : null}
+        <Box marginTop={1}>{commentRow($, ctx)}</Box>
+        <Box marginTop={1}>{commentList($, ctx)}</Box>
+        {actions && <Box marginTop={1}>{actions}</Box>}
+        {spinner}
         {keyLine && (
           <Box marginTop={1} flexDirection="column">
             {rule}
