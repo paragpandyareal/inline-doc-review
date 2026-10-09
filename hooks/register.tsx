@@ -772,7 +772,10 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     // Client and Input are on the terminal and desktop, Image on the terminal alone.
-    const { Client, Input, Image } = $.ui.resolve(e as typeof e & { surface: 'terminal' })
+    // Client comes straight from $.ui.resolve(e), so its modules can be read off this file; vscode and mobile have none.
+    // @ts-expect-error Client is not in every surface's table: it is drawn only where hasViews says the surface has it.
+    const { Client } = $.ui.resolve(e)
+    const { Input, Image } = els as Partial<Elements['terminal']>
     const hasViews = e.surface === 'terminal' || e.surface === 'desktop'
     const { path, version } = await read($, open)
     const ctx: Ctx = {
