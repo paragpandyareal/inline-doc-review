@@ -1,8 +1,8 @@
 # Inline Doc Review: project handover
 
-Read this first when picking the project up in a new Claude Code session. **Work in progress: an independent review and fix round. See [REVIEW-PLAN.md](REVIEW-PLAN.md) and continue from there.** It covers what exists, where it lives, how it got here and why, and what's next.
+Read this first when picking the project up in a new Claude Code session. The independent review and fix round (security, QA, code quality, transparency, simplification) is **done** in 0.6.0; see [REVIEW-PLAN.md](REVIEW-PLAN.md) and the reports in `reviews/`. This file covers what exists, where it lives, how it got here and why, and what's next.
 
-_Last updated: 2026-10-08, at version 0.4.0._
+_Last updated: 2026-10-09, at version 0.6.0._
 
 ## In one paragraph
 
@@ -16,7 +16,7 @@ Inline Doc Review is a Claude Code mod built by Parag Pandya, a PM, for people w
 | GitHub | https://github.com/paragpandyareal/inline-doc-review (public). The repo is its own marketplace. |
 | Install for anyone | `/plugin install inline-doc-review --marketplace paragpandyareal/inline-doc-review`, then `/inline-review setup` once |
 | Develop with hot reload | `claude --plugin-dir /home/parag/inline-doc-review`, or install as above and use `/reload-plugins` after edits |
-| Python helper venv | `~/.cache/inline-doc-review/venv` (python-docx, openpyxl, pypdf, pycel) |
+| Python helper venv | `~/.cache/inline-doc-review/venv` (python-docx, openpyxl, pypdf; hash-locked in `scripts/requirements.txt`) |
 | Sample files | `examples/`; also `/home/parag/review-pane-samples/` on the VPS |
 | Architecture | [HOW-IT-WORKS.md](HOW-IT-WORKS.md) |
 
@@ -46,12 +46,23 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
     - Big-sheet indicators (owner: "people may miss that there is other content").
     - The changed-cell green glow, the send spinner, the comment-marker pop and the sliding tab underline.
 11. **Tab order fix.** Opening a file used to move it to the front, so → bounced between two files. The order is now stable.
-12. **Published** to GitHub as its own marketplace, with docs.
+12. **Published** to GitHub as its own marketplace, with docs. Renamed from Review Pane to Inline Doc Review (0.5.0).
+13. **Independent reviews and fixes (0.6.0).** Five reviews were run: security, QA, code quality, transparency and simplification. The main changes:
+    - pycel (which compiled formulas into Python and ran them) was replaced by a small safe calculator.
+    - Setup dependencies are hash-locked.
+    - Document text is fenced in the prompt as data.
+    - Claude's tools are confined to the working folder.
+    - Comments are tied to their text, not row numbers (owner's requirement), and stale ones are flagged.
+    - Documents moved out of `$.state` into a cache.
+    - The send lifecycle follows Claude's turn.
+    - 34 QA bugs were fixed and about 15% of the code was cut.
 
 ## Current status
 
-- **Done and tested** (19 tests in `tests/`): every file type opens, selects, comments and sends; the multi-comment edit flow; arrow keys; tab order; source switch; the spinner and changed-cell glow; the big-sheet view.
-- **Verified for real only in part.** The owner used the Excel flow live and it worked end to end (B2 changed to 700). Mouse dragging works in their terminal. The later visual pass (palette, top bar, motion) passed the test kit but **had not yet been seen live** at handover time. Ask the owner how it looks.
+- **Done and tested:**
+  - 84 tests in `tests/`: every file type, the comment flow, keys, tab order, the source switch, the glow and spinner, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, and the QA reader cases.
+  - Two Python checks in `tests/python/`: the formula calculator (21 checks, including hostile formulas) and the extraction of tricky Word, Excel and PDF files (19 checks).
+- **Seen live:** the owner used the Excel flow live up to 0.5.0. **0.6.0 has passed the test kit but not yet been used live.** Ask the owner to try it.
 - **Owner's terminal:** reported `TERM=xterm-256color` at 80 columns, so PNG pictures show as text there; only kitty or Ghostty draw them.
 
 ## Known limits and ideas for next
@@ -67,7 +78,6 @@ The mod was first developed in a session-scoped folder (`~/.claude/dev-mods/<ses
   - an empty-state animation
   - a `motion: full | reduced | off` setting
   - `?` help and `⋯` overflow menus in the top bar
-- **Tests type-check loosely.** The test files have some type errors (`$.command.run` args, `console`). They run fine but should be tidied.
 - **Anthropic directory listing:** prepared, not submitted. The owner will publish later; see "Publishing to Anthropic's directory" below.
 
 ## How to work on it in a new session
@@ -98,15 +108,19 @@ cd /home/parag/inline-doc-review && git pull && claude --plugin-dir /home/parag/
 |---|---|
 | `claude plugin validate --strict .` | ✔ passes |
 | `name`, `displayName`, `version`, `description`, `author`, `homepage`, `repository`, `license` | set |
-| README (more than 40 words) and LICENSE | present (995 words, MIT) |
-| Text and images only, files under 256 KiB, under 512 files, no system files or symlinks | 31 files, largest 58 KB, one PNG |
-| Package installs pinned | `python-docx==1.2.0`, `openpyxl==3.1.5`, `pypdf==6.19.0`, `pycel==1.0b30` |
-| README discloses what it runs, reads, writes and downloads | "What it runs and accesses" section |
+| README (more than 40 words) and LICENSE | present (MIT; copyright header in every source file) |
+| Text and images only, files under 256 KiB, under 512 files, no system files or symlinks | ✔ (check again before submitting: `find . -size +256k -not -path './.git/*'`) |
+| Dependencies pinned | every package and its dependencies pinned with sha256 hashes in `scripts/requirements.txt`; wheels only |
+| README discloses what it runs, reads, writes and downloads | "Permissions and data", "Things to know", "Privacy", "Uninstall" |
+| Security contact and threat model | `SECURITY.md` (private GitHub advisories) |
+| Tool descriptions match behaviour | they state the folder confinement, that no content is returned, and that `replace` deletes unsent comments |
+| No code execution from documents | formulas are interpreted by `scripts/formulas.py`, with no `eval` or `exec` |
 | No credentials, no network calls of its own | ✔ |
 
 **Possible reviewer holds (not blockers):**
 - **Generic name:** `inline-doc-review` is made of generic words, so the portal may hold it as "Name may be confused with an existing listing". A reviewer then decides. If the owner wants to avoid that, rename **before the first listing** (for example `parag-inline-doc-review`), since names are permanent once people install.
-- **Package installs:** `/inline-review setup` installs packages, and the pinned packages' own dependencies resolve at install time.
+- **Package installs:** `/inline-review setup` downloads from PyPI. Everything is hash-locked, but a reviewer may still note it.
+- **A hook on every tool call:** it is a passthrough, and the README says so.
 
 **Steps:**
 1. Bump `version` in `.claude-plugin/plugin.json` and `marketplace.json`, update `CHANGELOG.md`, then commit and push.

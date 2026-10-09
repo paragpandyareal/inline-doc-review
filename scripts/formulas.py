@@ -1,3 +1,5 @@
+# Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
 """A small, safe Excel formula calculator for showing values in the pane.
 
 Workbooks written by scripts (openpyxl, which Claude often uses) carry no

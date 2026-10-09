@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
 """Writes the sample Excel and Word files for /inline-review examples.
 
     make_examples.py <folder>
@@ -15,9 +17,24 @@ VENV = os.path.join(os.path.expanduser("~"), ".cache", "inline-doc-review", "ven
 VENV_PY = os.path.join(VENV, "bin", "python")
 
 
+def is_trusted(path):
+    """Owned by this user (or root), and writable by no one else (the user's own group aside): safe to run from."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    group_ok = not st.st_mode & 0o020 or st.st_gid in (0, os.getgid())
+    return st.st_uid in (0, os.getuid()) and not st.st_mode & 0o002 and group_ok
+
+
+def venv_is_trusted():
+    return all(is_trusted(p) for p in (VENV, os.path.join(VENV, "bin"), os.path.realpath(VENV_PY)))
+
+
 def reexec_in_venv():
     # Compare the environment, not the interpreter: a venv's python links to the system one.
-    if os.path.exists(VENV_PY) and os.path.realpath(sys.prefix) != os.path.realpath(VENV):
+    # Only into a venv no one else can write to: otherwise read with the system Python.
+    if os.path.exists(VENV_PY) and os.path.realpath(sys.prefix) != os.path.realpath(VENV) and venv_is_trusted():
         os.execv(VENV_PY, [VENV_PY, *sys.argv])
 
 

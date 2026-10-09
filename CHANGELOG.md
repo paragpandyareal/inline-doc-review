@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.6.0 — 2026-10-09
+
+Security, reliability and clean-up, after independent security, QA, code-quality, transparency and simplification reviews (reports in `docs/reviews/`).
+
+**Comments**
+- Comments are tied to the text they quote, not row numbers. When the file changes, each waiting comment finds its text again, even if it moved. If the text was rewritten, it's marked **⚠ text changed**, and the prompt tells Claude.
+- A comment is matched by its exact place (file, sheet, range), so two paragraphs on one HTML line no longer share a comment.
+- "Claude is working" now lasts until Claude's turn ends, and a send made while Claude is busy waits for the right turn.
+- Edit before sending adds your comments after anything already in the prompt box. They show as "in the prompt box", with **↩ back to drafts** to take them back out.
+
+**Security**
+- Spreadsheet formulas are calculated by a small built-in calculator (`scripts/formulas.py`), not pycel, which compiled formulas into Python and ran them.
+- `/inline-review setup` installs from a hash-locked `scripts/requirements.txt` (wheels only, every dependency pinned).
+- The prompt fences quoted document text as data (`<file-excerpt>`, lines prefixed `> `). A document can't close the fence.
+- Claude's `open_file` and `open_files` only open files in the working folder (no hidden folders), files Claude wrote, or files already open.
+- Control characters and terminal escapes are stripped from everything shown or sent.
+- Size limits: text over 10 MB is refused and over 2 MB is shown plain; at most 20,000 rows; images over 2 MB are refused; Word, Excel and PDF files over 50 MB are refused.
+- The folder scan after commands is skipped in the home folder, at `/`, and for subagents.
+- The helper only switches into its venv if no other user can write to it.
+- `SECURITY.md`, plus README sections on permissions, privacy and uninstalling.
+
+**Fixes**
+- Word: numbered and nested lists, tracked insertions, content controls, equal adjacent cells, numbering restarts.
+- Excel: chart sheets, wrong dimension tags, time and currency formats, array formulas, hidden sheets, newlines in cells, CJK and emoji widths, sheet names with apostrophes or `!`.
+- PDF: password-protected files, and a note when pages are cut.
+- Markdown: `snake_case`, `# C#`, escapes, single-dash and pipeless tables, underlined headings, 4-space lists, nested fences, table anchors.
+- HTML: a 1 MB page now parses in well under a second (it took about 12 s). Also attributes containing `>`, unclosed `<head>`, `colspan`, more entities, out-of-range entities, per-table headers.
+- ADF: null or unknown nodes, nested task lists, deep nesting.
+- Large files no longer hit the state limit: documents are cached outside `$.state`.
+- Quick key presses no longer drop moves. The first arrow key starts where you're looking. ← → do nothing in documents.
+- Clicking a comment in a long wrapped document scrolls to it.
+- A deleted file says so. Files restored with an older modification time are picked up.
+- Auto-open no longer resets the view of a file you're already reading.
+- `/inline-review` accepts quoted paths and `~`, and refuses unsupported types.
+- The file bar fits narrow panes.
+
+**Removed**
+- The sliding sheet tabs (now buttons), the comment-marker pop, the range sparkline, and compatibility code for older versions.
+
 ## 0.5.0 — 2026-10-08
 
 **Renamed: Review Pane is now Inline Doc Review.**

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderSurface } from 'claude-code'
 
@@ -172,7 +175,8 @@ async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise
 
 function capRows(d: LinesDoc): LinesDoc {
   if (d.rows.length <= MAX_ROWS) return d
-  return { ...d, rows: d.rows.slice(0, MAX_ROWS), note: `Only the first ${MAX_ROWS.toLocaleString('en')} of ${d.rows.length.toLocaleString('en')} rows are shown.` }
+  const cut = `Only the first ${MAX_ROWS.toLocaleString('en')} of ${d.rows.length.toLocaleString('en')} rows are shown.`
+  return { ...d, rows: d.rows.slice(0, MAX_ROWS), note: d.note ? `${d.note} ${cut}` : cut }
 }
 
 /**

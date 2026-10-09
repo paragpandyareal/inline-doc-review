@@ -1,9 +1,16 @@
-"""QA checks for scripts/extract.py. Run: ~/.cache/inline-doc-review/venv/bin/python tests/qa/check_extract.py
-(after tests/qa/make_inputs.py has written /tmp/claude-1001/qareview/inputs). Prints PASS/FAIL per expectation."""
-import json, os, subprocess, sys
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+# Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+"""Checks scripts/extract.py on tricky Word, Excel and PDF files.
+
+Run with the helper's Python (after /inline-review setup):
+    ~/.cache/inline-doc-review/venv/bin/python -I tests/python/check_extract.py
+It writes its inputs to a temporary folder first (make_inputs.py). Prints PASS/FAIL per expectation."""
+import json, os, subprocess, sys, tempfile
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 X = os.path.join(ROOT, "scripts", "extract.py")
-I = "/tmp/claude-1001/qareview/inputs"
+I = tempfile.mkdtemp(prefix="idr-inputs-")
+subprocess.run([sys.executable, "-I", os.path.join(HERE, "make_inputs.py")], env={**os.environ, "IDR_INPUTS": I}, check=True)
 
 def run(kind, name):
     out = subprocess.run([sys.executable, X, kind, os.path.join(I, name)], capture_output=True, text=True)
@@ -41,7 +48,8 @@ check("nested numbering restarts under a new parent", rows["Deep B (should resta
 check("equal adjacent table cells are both kept", rows.get("Yes | Yes | No") is not None, [r["text"] for r in d["rows"] if "Yes" in r["text"]])
 n = run("docx", "numpr.docx")
 items = [r for r in n["rows"] if r.get("style") == "li"]
-check("Word numbered list (List Paragraph + numPr) shows numbers", items and items[0].get("marker") == "1.", [i.get("marker") for i in items])
+# numId 1 in python-docx's default template is a bullet list, so a bullet is right here.
+check("Word list (List Paragraph + numPr) follows its numbering format", items and items[0].get("marker") == "•", [i.get("marker") for i in items])
 check("numPr ilvl gives nesting", items and items[-1].get("indent") == 1, [i.get("indent") for i in items])
 t = run("docx", "tracked.docx")
 texts = " ".join(r["text"] for r in t["rows"])

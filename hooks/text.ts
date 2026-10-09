@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+
 /**
  * Text as the terminal draws it: escapes and control characters removed,
  * widths counted in cells (CJK and emoji take two). Shared by the hooks

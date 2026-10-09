@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+
 import type { ClientKeyEvent, ClientModule, ClientPointerEvent } from 'claude-code'
 
 import type { RowStyle, Span, Tone } from '../types'

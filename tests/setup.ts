@@ -27,7 +27,7 @@ export const PANE = {
  */
 export function begin(
   on: On,
-  options: { mtime?: (path: string) => number; size?: number; exists?: (path: string) => boolean; isGone?: () => boolean } = {},
+  options: { mtime?: (path: string) => number; size?: number; exists?: (path: string) => boolean; isGone?: () => boolean; box?: string } = {},
 ) {
   mock.store(on)
   mock.clock(on)
@@ -39,7 +39,7 @@ export function begin(
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.toast', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
-  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('prompt.read', () => ({ value: { text: options.box ?? '', cursor: 0 } }))
   on('fs.exists', (_, e) => ({ value: options.exists?.((e as { path: string }).path) ?? true }))
   on('fs.stat', (_, e) => {
     const path = (e as { path: string }).path

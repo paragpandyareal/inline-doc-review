@@ -1,7 +1,7 @@
 {
   "name": "inline-doc-review",
   "displayName": "Inline Doc Review",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Review what Claude makes without leaving Claude Code: Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG open in a pane, you highlight a part and comment, and Claude edits the real file.",
   "author": { "name": "Parag Pandya", "url": "https://github.com/paragpandyareal" },
   "homepage": "https://github.com/paragpandyareal/inline-doc-review",

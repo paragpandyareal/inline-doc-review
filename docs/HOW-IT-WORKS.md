@@ -24,55 +24,72 @@ The pane **never edits files itself**. Claude does every edit with the right lib
 | `.claude-plugin/plugin.json` | — | The manifest, including `"types"`, the state contract |
 | `.claude-plugin/marketplace.json` | — | Makes this repository installable with `/plugin install` |
 | `hooks/hooks.json` | — | Names the hooks module |
-| `hooks/register.tsx` | hooks environment | **The core.** Hooks, state, file loading, the pane layout (`ui.render`) and message handling (`ui.message`). |
-| `hooks/viewer.tsx` | drawing thread (a `Client` surface module) | The document and grid view. Turns mouse drags and keys into posts. Runs the motion: the changed-cell glow and the comment-marker pop. |
-| `hooks/filebar.tsx` | drawing thread | The top bar: file-type badge, the open file's name, a ▾ dropdown of all open files, a ‹ n/N › stepper (← →), and switches |
-| `hooks/tabs.tsx` | drawing thread | Sheet tabs under a spreadsheet, wrapping when many; the underline slides between tabs |
-| `hooks/spinner.tsx` | drawing thread | "Claude is working on N comments…" with a braille spinner and a sweeping highlight |
+| `hooks/register.tsx` | hooks environment | **The hooks.** File loading and the document cache, watching for changes, the comment lifecycle, the tools and the command. The pane is drawn by one small function per section. |
+| `hooks/model.ts` | hooks environment | **Pure logic, no `$`:** laying documents out (`wrapRows`), naming a selection (`describeLines`, `describeGrid`), finding a comment again after an edit (`reanchor`), diffing two reads (`diffDocs`), and the prompt (`feedbackPrompt`) |
+| `hooks/text.ts` | both | Strips control characters and escapes; counts widths in terminal cells (CJK and emoji take two) |
+| `hooks/viewer.tsx` | drawing thread (a `Client` surface module) | The document and grid view. Turns mouse drags and keys into posts. Runs the changed-cell glow on one timer. |
+| `hooks/filebar.tsx` | drawing thread | The top bar: file-type badge, the open file's name, a ▾ dropdown of all open files, a ‹ n/N › stepper (← →), and switches that shrink to icons on a narrow pane |
+| `hooks/spinner.tsx` | drawing thread | "Claude is working on N comments…" |
 | `hooks/md.ts`, `html.ts`, `adf.ts` | hooks environment | Read Markdown, HTML and ADF into formatted rows (`DocRow`) |
-| `hooks/format.ts` | hooks environment | Shared helpers: inline Markdown, table layout, span tidying |
-| `hooks/palette.ts` | hooks environment | Colours: a slate-and-blue scheme (GitHub-style dark/light) chosen by the `/config` theme, theme keys under ANSI and colour-blind themes, and file-type badges |
-| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. Runs itself under `~/.cache/inline-doc-review/venv` once `/inline-review setup` has created it. Uses `pycel` to calculate formulas that have no saved result (files written by openpyxl never have one). |
-| `types/index.d.ts` | — | The state contract. Every `$.state` value and its type, declared under `PluginState['inline-doc-review']`. |
-| `tests/*.test.tsx` | `claude plugin test` | 23 tests: every file type opened and commented on, the comment flow, keys, motion, tab order. `dump*.test.tsx` print what the pane draws, which is useful when changing the layout. |
+| `hooks/format.ts` | hooks environment | Shared reader helpers: inline Markdown, table layout, gaps |
+| `hooks/palette.ts` | hooks environment | Colours by `/config` theme, and file-type badges |
+| `scripts/extract.py` | a Python process | Reads `.docx`, `.xlsx` and `.pdf` into JSON. It switches into `~/.cache/inline-doc-review/venv` once `/inline-review setup` has made it, but only if no one else can write to it. |
+| `scripts/formulas.py` | a Python process | A small, safe formula calculator for formulas with no saved result (files written by openpyxl never have one). It reads formulas and never runs them as code. |
+| `scripts/requirements.txt` | — | The setup packages, pinned and hash-locked |
+| `types/index.d.ts` | — | The state contract. Every `$.state` value and its type. |
+| `tests/*.test.tsx` | `claude plugin test` | 84 tests: each file type, the comment flow, keys, re-anchoring, the send lifecycle, prompt fencing, tool confinement, size limits, reader edge cases (from the QA review) |
+| `tests/python/*.py` | Python | `check_formulas.py` (the calculator, including hostile formulas) and `check_extract.py` (tricky Word, Excel and PDF files, generated on the fly) |
 
 ## The document model
 
 Every file becomes one of these:
 
 - **`lines`:** a list of `DocRow`s (`text`, `anchor`, `style`, `spans`, `indent`, `marker`, `tone`).
-  - `anchor` is the place, in words Claude can act on: `line 12`, `paragraph 5 (under "Pricing")`, `content[4].content[1]`, `<p> at line 15`, `page 2, line 7`.
-  - `isFormatted` docs (Markdown, ADF, HTML, Word) draw without line numbers and use `style` (h1–h3, p, li, quote, code, th/td, panel, rule, space).
-- **`grid`:** sheets of cells, `{ v: shown value, f?: formula, x?: number }`.
+  - `anchor` is the place, in words Claude can act on: `line 12`, `paragraph 5 (under "Pricing")`, `content[4].content[1]`, `<p> at line 15` (`<p> #2 at line 15` for the second on that line), `page 2, line 7`.
+  - Formatted documents (Markdown, ADF, HTML, Word) draw without line numbers and use `style` (h1–h3, p, li, quote, code, th/td, panel, rule, space).
+- **`grid`:** sheets of cells, `{ v: shown value, f?: formula, x?: number }`, with `isCut` and `isHidden` flags.
 - **`image`:** PNG bytes plus their size, read from the header.
 - **`error`:** a message the pane shows instead.
 
-`wrapRows` (in `register.tsx`) turns rows into the visual lines that fit the pane's width, keeping each span's emphasis. Tables and code never wrap.
+**Parsed documents are not kept in `$.state`.** A workbook can be far bigger than a state value may be (about 4 million characters). They live in a small cache in `register.tsx`, keyed by path. `$.state` holds only `open: { path, version }`. Each new read bumps `version`, and that redraws the pane.
 
-## State
+**Layout is cached** by path, version, width and view. A key press or scroll only slices the visible lines; it doesn't wrap the whole document again. Scrolling geometry is kept per surface (terminal or desktop).
 
-Everything the drawing reads lives in `$.state` (declared in `types/index.d.ts`), never in module variables, because a hot reload resets those:
+**A slow load can't win.** `show()` notes the file it is loading and drops the result if another file was asked for in the meantime.
 
-| Key | What it holds |
-|---|---|
-| `files` | Open tabs. Order is stable: new files are added at the end. |
-| `current`, `doc` | The shown file and its read model |
-| `view` | `top`, `left` (scroll), `sheet`, `raw` (source view), and the keyboard cursor `cur` and anchor `anc` |
-| `selection` | What is highlighted, already turned into a `label` and `quote` |
-| `comments` | `draft` comments wait in the list. `sent` ones are cleared when the file changes on disk. |
-| `autoOpen` | Mirrored to `$.store`, so it outlives the session |
-| `changed` | What Claude's last edit changed (rows or `sheet:row:col` cells) plus a counter `key`. The viewer glows when the key changes. |
+## Comments
+
+A comment holds its file, sheet, range, label, **the text it quotes**, and your words.
+
+- **Tied to text, not row numbers.** Every time a file is read again, each waiting comment looks for its quoted text: its first line (or last line, if the start was edited), nearest to where it was. It moves there, and its label follows (`line 3` becomes `line 5`). If the text is gone, the comment is marked stale ("⚠ text changed") and stays put. In a spreadsheet, a comment stays on its cells unless the same values moved together by whole rows. Then it follows them.
+- **Matching is by place, not label.** Selecting the same file, sheet and range again edits that comment.
+- **Lifecycle:** `draft` → `queued` (Edit before sending put it in the prompt box) → `sent`, with a batch id.
+  - Send submits the prompt and registers the batch. A send made while Claude is mid-turn is marked to skip that turn's end.
+  - `prompt.submit` turns queued comments into a sent batch when the prompt carrying them is submitted.
+  - `turn.complete` (main agent only) clears exactly the batches that turn answered.
+  - File changes never clear comments, because Claude may still be working.
+
+## The prompt
+
+`feedbackPrompt` builds one message:
+- A header that says what follows is data. Each item has `File:`, `Location:`, the quote inside `<file-excerpt>` with every line prefixed `> `, and then `Feedback:`.
+- A `</file-excerpt` inside the file is neutralised, control characters are stripped, and the excerpt is capped at 1,200 characters and labels at 200.
+- The header `Review feedback from the Inline Doc Review pane.` is how the hooks recognise the pane's own prompts.
 
 ## Hooks
 
 | Hook | Why |
 |---|---|
-| `session.start` | Registers `/inline-review` and the `open_file` tool. Reads the theme and the auto-open setting. Rereads the open file, since the format may have changed across versions. |
-| `tool.call` (Write, Edit, MultiEdit, NotebookEdit) | Notes files Claude wrote |
-| timer (every 2 s) + `tool.call` (Bash) | Checks each open file's modification time and rereads any that changed, however they changed. Then scans the working folder (3 levels deep, skipping `node_modules`, `.git` and the like) for supported files changed during the command, which catches files Python scripts make |
-| `prompt.submit` / `turn.complete` | Collects the files made in a turn; at the end of a turn, clears sent comments still shown as in progress. If auto-open is on and the turn made 1–5 documents, opens the pane on them. |
+| `session.start` | Registers `/inline-review` and the two tools. Reads the theme, the auto-open setting and the working folder's real path. Rereads the open file and drops sends whose turn this module can no longer follow. Starts the 2-second timer. |
+| `tool.call` (all tools) | A passthrough: it never blocks or changes a call. After Write, Edit, MultiEdit or NotebookEdit it notes the file. After Bash it rereads listed files whose modification time changed, then scans the working folder for new documents (not in the home folder or `/`, not for subagents). |
+| `tool.call` (`open_file`, `open_files`) | The model's tools, confined to the working folder, files Claude wrote, and files already open |
+| timer (every 2 s) | Stats the listed files (at most 30) and rereads any whose modification time changed. A missing file shows "deleted or moved". |
+| `prompt.submit` | Resets the turn's file list; turns queued comments into a sent batch |
+| `turn.start` / `turn.complete` | Tracks the running turn; clears answered batches; auto-open |
 | `ui.render` (Pane `review`) | Draws the pane |
-| `ui.message` | Posts from the viewer and tabs: select, move, scroll, sheet, tab, and the switches (`source`, `reload`, `auto`) |
+| `ui.message` | Posts from the viewer and the file bar: select, move, scroll, sheet, tab, and the switches (`source`, `reload`, `auto`) |
+
+Every gating hook has a `.catch` that passes the event on, so a failure in the pane never blocks Claude.
 
 ## Design decisions (and why)
 
@@ -86,7 +103,9 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 6. **Comments stay editable until sent.** Clicking a commented spot edits its comment instead of creating a duplicate.
 7. **Auto-open is opt-in** and lives in the top bar, not next to Send.
 8. **Comments carry exact anchors** (`Budget!C3`, `content[4].content[1]`, `lines 12–14`) plus quoted text, so Claude edits the right spot.
-9. **Motion with a purpose:** the changed-cell glow (the payoff), the spinner (it's working), the comment pop and the tab slide. All motion runs on the viewer's own frame clock and stops itself.
+9. **Motion with a purpose:** the changed-cell glow (the payoff) and the spinner (it's working). Nothing else moves.
+10. **Comments follow their text** (owner's requirement), and stale ones say so instead of silently pointing at the wrong line.
+11. **Document text is data.** It is fenced in the prompt, and Claude's tools can't open files outside the working folder.
 
 ## Developing
 
@@ -95,7 +114,9 @@ These came from the owner's feedback and from two design reviews: a UX/UI critiq
 claude --plugin-dir /path/to/inline-doc-review
 
 claude plugin validate .      # what the engine will load, and what it would refuse
-claude plugin test .          # the 23 tests
+claude plugin test .          # the 84 tests
+python3 -I tests/python/check_formulas.py
+~/.cache/inline-doc-review/venv/bin/python -I tests/python/check_extract.py
 ```
 
 To type-check, Claude Code writes its API types to `.claude-plugin/types/` once it has loaded the mod. Then run `tsc -p .`.
@@ -105,5 +126,6 @@ Gotchas we hit:
 - **Atom references need literals:** `atom({ plugin: 'inline-doc-review', key: 'files' } as const, …)`.
 - **Client props can't hold `undefined`.** Leave the field out instead, or the pane refuses the tree.
 - **Choose command names with care.** The engine refused `/review` because it clashes with the built-in `/code-review`. That's why the command is `/inline-review`.
-- **The views can run a newer version than the main module.** `viewer.tsx` and `tabs.tsx` are read from disk on each draw, while `register.tsx` reloads only between turns. Mid-update, a new view can get an old main module's props, so every new prop needs a default in the view. `tests/old-props.test.tsx` guards this.
+- **`$` can't be put in an object.** Pass it as an argument to each top-level function instead.
+- **Register test mocks before the first `$` call.** `tests/setup.ts` has `begin(on)` for the mocks and `start($)` to start the session in `/w`.
 - **The test kit needs mocks for side effects.** It has no fs, process or clock: answer `fs.read`, `process.run` and the rest in the test, and use `mock.store(on)` and `mock.clock(on)`.

@@ -1,4 +1,6 @@
-"""Generates tricky QA inputs into /tmp/claude-1001/qareview/inputs."""
+# Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+# Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+"""Generates tricky inputs for check_extract.py into the folder named by $IDR_INPUTS."""
 import datetime as dt
 import os
 import zipfile
@@ -11,7 +13,7 @@ from docx.shared import Inches
 from pypdf import PdfWriter, PdfReader
 from pypdf.generic import (ArrayObject, DecodedStreamObject, DictionaryObject, NameObject, NumberObject)
 
-OUT = "/tmp/claude-1001/qareview/inputs"
+OUT = os.environ["IDR_INPUTS"]
 os.makedirs(OUT, exist_ok=True)
 p = lambda name: os.path.join(OUT, name)
 

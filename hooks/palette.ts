@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Inline Doc Review: https://github.com/paragpandyareal/inline-doc-review
+
 /**
  * The pane's colours: a calm slate-and-blue scheme (GitHub-style dark and
  * light), blue for focus, teal for formulas, amber for comments, green for

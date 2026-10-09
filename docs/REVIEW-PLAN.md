@@ -229,3 +229,23 @@ Move these out of `register.tsx`, and fix them:
 - Run `claude plugin validate --strict .`, `claude plugin test .` and `tsc`, plus QA `check_extract.py`.
 - Bump to 0.6.0 in `plugin.json` and `marketplace.json`, sync the session mods copy, commit and push.
 - Report to the owner: what was found, what was fixed, and anything deliberately not done.
+
+## Progress log: phases 2–7 (2026-10-09)
+
+All of T1–T7 are **done** and released as 0.6.0.
+- **T1 and T2:** `hooks/model.ts`, `hooks/text.ts`, and the new types (`open`, comment `sheet`/`batch`/`isStale`, `queued`).
+- **T3:** the register rewrite.
+- **T4:** the readers.
+- **T5:** `tabs.tsx`, shims, pop, sparkline and dump tests removed.
+- **T6:** `SECURITY.md`, the README permissions/privacy/uninstall/licence sections, HOW-IT-WORKS, HANDOVER and CHANGELOG.
+- **T7:** 84 TS tests, plus Python checks in `tests/python/` (21 + 19).
+
+Also done:
+- The QA tests moved into `tests/`, on the shared setup in `tests/setup.ts`.
+- The venv trust check (SEC F7).
+- Copyright headers in every source file.
+
+Deliberately not done:
+- `python3` is still found through `PATH` (documented in SECURITY.md).
+- The tools stay non-deferred, so "open the budget" works without a tool search.
+- No `defusedxml`: Python's expat has protected against "billion laughs" since 2.4.1, and python-docx turns off entity resolution.

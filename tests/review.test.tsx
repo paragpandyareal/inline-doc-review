@@ -37,7 +37,7 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
   expect(await ui.find({ type: 'Text', text: /Comments · 2/ })).toBeDefined()
   await ui.press({ key: 'fill' })
   expect(filled).toContain('File: `/work/plan.txt`\n   Location: lines 3–4')
-  expect(filled).toContain('<file-excerpt>\n   We ship in May.\n   Budget is 40k.\n   </file-excerpt>')
+  expect(filled).toContain('<file-excerpt>\n   > We ship in May.\n   > Budget is 40k.\n   </file-excerpt>')
   expect(filled).toContain('Feedback: Say which May.')
   expect(await ui.find({ key: 'send' })).toBeUndefined()
 })
