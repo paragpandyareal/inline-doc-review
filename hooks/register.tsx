@@ -812,21 +812,18 @@ export const register: Register = on => {
     const keyLine = keysRow(ctx, section.keys ?? [])
     const sent = ctx.notes.filter(c => c.status === 'sent').length
     // The three drawing modules, each named by a fixed path, on the surfaces that draw them; elsewhere, plain text.
-    let fileBar = <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>
-    let document = section.body
-    let spinner = null
+    let fileBar: ReturnType<typeof h> = <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>
+    let document: ReturnType<typeof h> = section.body
+    let spinner: ReturnType<typeof h> = null
     if (e.surface === 'terminal' || e.surface === 'desktop') {
-      const { Client } = $.ui.resolve(e)
-      const barProps: FileBarProps = fileBarProps(ctx)
-      fileBar = <Client module="./filebar.tsx" key="file-tabs" props={barProps} />
+      // Each view is the call its JSX compiles to, with the element taken from the table right there and a fixed module path.
+      fileBar = h($.ui.resolve(e).Client, { module: './filebar.tsx', key: 'file-tabs', props: fileBarProps(ctx) })
       if (section.viewer) {
-        const viewerProps: ViewerProps = section.viewer.props
-        const viewerHeight = section.viewer.height
-        document = <Client module="./viewer.tsx" key="viewer" props={viewerProps} height={viewerHeight} />
+        document = h($.ui.resolve(e).Client, { module: './viewer.tsx', key: 'viewer', props: section.viewer.props, height: section.viewer.height })
       }
       if (sent > 0) {
         const spinnerProps: SpinnerProps = { text: `Claude is working on ${plural(sent, 'comment')}…`, color: ctx.pal.claude, glow: ctx.pal.warning }
-        spinner = <Client module="./spinner.tsx" key="spinner" props={spinnerProps} />
+        spinner = h($.ui.resolve(e).Client, { module: './spinner.tsx', key: 'spinner', props: spinnerProps })
       }
     }
     return (
