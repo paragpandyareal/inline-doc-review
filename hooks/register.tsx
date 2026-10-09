@@ -772,12 +772,13 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     // Client and Input are on the terminal and desktop, Image on the terminal alone.
-    const { Client, Input, Image } = els as Partial<Elements['terminal']>
+    const { Client, Input, Image } = $.ui.resolve(e as typeof e & { surface: 'terminal' })
+    const hasViews = e.surface === 'terminal' || e.surface === 'desktop'
     const { path, version } = await read($, open)
     const ctx: Ctx = {
       els,
-      Input,
-      Image,
+      Input: hasViews ? Input : undefined,
+      Image: e.surface === 'terminal' ? Image : undefined,
       surface: e.surface,
       columns: Math.max(40, e.props.bodyColumns),
       bodyRows: e.props.scroll.bodyRows,
@@ -813,16 +814,16 @@ export const register: Register = on => {
     // The three drawing modules, each named by a fixed path; a surface without Client gets plain text.
     return (
       <Box flexDirection="column" width={ctx.columns}>
-        {Client ? <Client key="file-tabs" module="./filebar.tsx" props={fileBarProps(ctx)} /> : <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>}
+        {hasViews ? <Client key="file-tabs" module="./filebar.tsx" props={fileBarProps(ctx)} /> : <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>}
         {section.bar}
         {rule}
-        {Client && section.viewer ? <Client key="viewer" module="./viewer.tsx" props={section.viewer.props} height={section.viewer.height} /> : section.body}
+        {hasViews && section.viewer ? <Client key="viewer" module="./viewer.tsx" props={section.viewer.props} height={section.viewer.height} /> : section.body}
         {section.after ?? null}
         {section.footnote ? <Text color={ctx.pal.warning} wrap="truncate-end">{section.footnote}</Text> : null}
         <Box marginTop={1}>{commentRow($, ctx)}</Box>
         <Box marginTop={1}>{commentList($, ctx)}</Box>
         {actions && <Box marginTop={1}>{actions}</Box>}
-        {Client && sent > 0 ? (
+        {hasViews && sent > 0 ? (
           <Client
             key="spinner"
             module="./spinner.tsx"
