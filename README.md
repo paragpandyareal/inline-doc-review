@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/panda.png" width="176" alt="The Lazy Panda Panel panda: pixel art of a sleepy panda face"></p>
+![The Lazy Panda Panel panda: pixel art of a sleepy panda face](docs/panda.png)
 
 # Lazy Panda Panel for Claude Code
 
