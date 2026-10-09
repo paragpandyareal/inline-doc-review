@@ -2,7 +2,7 @@
 // Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 
 import { atom, read, update } from 'claude-code'
-import type { Elements, EngineInterface, Register, RenderSurface } from 'claude-code'
+import type { Elements, EngineInterface, Register, RenderNode, RenderSurface } from 'claude-code'
 
 import type { Doc, DocRow, ReviewComment, ReviewSelection, View } from '../types'
 import { adfRows, isAdf } from './adf'
@@ -812,9 +812,9 @@ export const register: Register = on => {
     const keyLine = keysRow(ctx, section.keys ?? [])
     const sent = ctx.notes.filter(c => c.status === 'sent').length
     // The three drawing modules, each named by a fixed path, on the surfaces that draw them; elsewhere, plain text.
-    let fileBar: ReturnType<typeof h> = <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>
-    let document: ReturnType<typeof h> = section.body
-    let spinner: ReturnType<typeof h> = null
+    let fileBar: RenderNode | null | undefined = <Text bold>{baseName(path ?? 'Lazy Panda Panel')}</Text>
+    let document: RenderNode | null | undefined = section.body
+    let spinner: RenderNode | null | undefined = null
     if (e.surface === 'terminal' || e.surface === 'desktop') {
       // Each view is the call its JSX compiles to, with the element taken from the table right there and a fixed module path.
       fileBar = h($.ui.resolve(e).Client, { module: './filebar.tsx', key: 'file-tabs', props: fileBarProps(ctx) })
