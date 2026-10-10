@@ -13,7 +13,11 @@ Open them beside the conversation, highlight what's wrong, comment, and Claude f
 [![Claude Code mod](https://img.shields.io/badge/Claude%20Code-mod-2DD4BF)](#install)
 [![Linux · macOS · Windows](https://img.shields.io/badge/runs%20on-Linux%20·%20macOS%20·%20Windows-F472B6)](#install)
 
-[![Watch the 45-second tour: open a spreadsheet beside Claude, comment on two cells, send, and watch Claude's edits glow green](docs/images/film-poster.jpg)](https://github.com/paragpandyareal/lazy-panda-panel/releases/download/v0.9.0/lazy-panda-panel.mp4)
+
+
+https://github.com/user-attachments/assets/d49cc6cb-9a84-4843-92b3-24f61d252a21
+
+
 
 </div>
 
