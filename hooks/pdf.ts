@@ -80,7 +80,7 @@ for (const c of '()<>[]{}/%') DELIM[c.charCodeAt(0)] = 1
 /** A lexer over the bytes, from a position. */
 const lexer = (b: Uint8Array, pos = 0): Lexer => Object.assign(new Lexer(), { b, pos })
 
-/** Reads PDF tokens and objects from bytes, from a position. */
+/** Reads PDF words and objects from bytes, from a position. */
 class Lexer {
   pos = 0
   declare readonly b: Uint8Array
@@ -1015,14 +1015,14 @@ async function pageText(doc: Doc, page: Dict, budget: { ops: number }, pictures:
         budget.ops = -1
         return
       }
-      const token = lex.next()
-      if (token === undefined) break
-      if (!(token instanceof Op)) {
-        operands.push(token)
+      const item = lex.next()
+      if (item === undefined) break
+      if (!(item instanceof Op)) {
+        operands.push(item)
         if (operands.length > 64) operands.shift()
         continue
       }
-      const op = token.op
+      const op = item.op
       const num = (k: number) => {
         const v = operands[operands.length - k]
         return typeof v === 'number' ? v : 0
@@ -1262,7 +1262,7 @@ export async function readPdf(bytes: Uint8Array): Promise<PdfResult> {
   if (encrypt !== undefined && encrypt !== null) {
     if (encrypt instanceof Ref) doc.encryptRef = encrypt
     const info = await doc.dict(encrypt)
-    const protectedMessage = { kind: 'error' as const, message: 'This PDF is password-protected, so its text can’t be shown.' }
+    const protectedMessage = { kind: 'error' as const, message: 'This PDF is locked, so its text can’t be shown.' }
     if (!info || nameOf(info.get('Filter')) !== 'Standard') return protectedMessage
     const ids = await doc.get(doc.trailer.get('ID'))
     const id = Array.isArray(ids) && ids[0] instanceof PdfString ? ids[0].bytes : new Uint8Array(0)

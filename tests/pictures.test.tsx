@@ -10,7 +10,8 @@ const halves = (x: number) => (x < 20 ? 0xdd2222 : 0x2244dd)
 const CHART = png(40, 24, halves)
 
 const open = async ($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1], name: string, bytes: Uint8Array, env = terminal({ isSharp: true })) => {
-  begin(on, { env })
+  // Not local: a Linux server reached over SSH, with no desktop (and no Mac system file).
+  begin(on, { env, exists: path => !(env.DISPLAY === undefined && path.includes('SystemVersion.plist')) })
   on('fs.read', () => ({ value: { base64: base64(bytes) } }))
   await start($)
   await $.command.run({ command: 'panda', args: `/w/${name}` })
@@ -21,9 +22,8 @@ const open = async ($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters
 const terminal = (how: { isSharp?: boolean; isLocal?: boolean }) => ({
   TERM: how.isSharp ? 'xterm-kitty' : 'xterm-256color',
   TERM_PROGRAM: undefined,
-  SSH_CONNECTION: how.isLocal ? undefined : '1.2.3.4 22',
-  SSH_TTY: undefined,
-  DISPLAY: ':0',
+  DISPLAY: how.isLocal ? ':0' : undefined,
+  WAYLAND_DISPLAY: undefined,
 })
 
 /** The colours an Image's pixels hold. */
@@ -74,7 +74,7 @@ test('on the person’s own computer, the card opens the file in its usual app',
   const ui = await open($, on, 'report.docx', docx([{ picture: CHART }]), terminal({ isSharp: false, isLocal: true }))
   await ui.post({ type: 'select', a: [0, 0], b: [0, 0] }, { in: 'viewer' })
   await ui.press({ key: 'open-outside' })
-  // The test kit says every file exists, so this machine looks like a Mac: \`open\`, as Finder would.
+  // The test kit says every file exists, so this machine looks like a Mac: `open`, as Finder would.
   expect(runs).toEqual([['open', '/w/report.docx']])
 })
 

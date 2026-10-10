@@ -12,7 +12,7 @@
       "name": "lazy-panda-panel",
       "source": "./",
       "description": "Open Excel, Word, PDF, Markdown, Confluence (ADF), HTML and PNG files in a pane, highlight a part, comment, and send the feedback to Claude. Nothing to install; Word, Excel and PDF files over 4 MB need Python.",
-      "version": "0.9.2"
+      "version": "0.9.3"
     }
   ]
 }

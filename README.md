@@ -73,7 +73,7 @@ Markdown, HTML and Confluence files have a **‹› Source** switch for when you
 
 The pane tells kitty and Ghostty apart by the `TERM` and `TERM_PROGRAM` settings they set.
 
-**The Open button** opens the file in your computer's usual app, as double-clicking it would: Preview or Photos for a PNG, Word for a Word file, your PDF reader for a PDF, your browser for a web page. It's only there when Claude Code runs on your own computer (Mac, Windows, or Linux with a desktop). Over SSH it would open the file on the server, so the card tells you to open it on your computer instead. Pictures in Markdown and Confluence files have no Open button, because those files have no usual app.
+**The Open button** opens the file in your computer's usual app, as double-clicking it would: Preview or Photos for a PNG, Word for a Word file, your PDF reader for a PDF, your browser for a web page. It's there on a Mac, on Windows, and on Linux with a desktop. On a Linux server you reach over SSH there's no desktop, so the card tells you to open the file on your computer instead. (If Claude Code runs on a remote Mac or Windows machine, Open opens the file on that machine.) Pictures in Markdown and Confluence files have no Open button, because those files have no usual app.
 
 **Commenting on a picture.** A comment applies to the whole picture. You can't select part of one. Claude gets the file, which picture it is and its caption or alt text, and your comment.
 
@@ -208,7 +208,7 @@ Lazy Panda Panel is a Claude Code *mod*. That means code that runs inside Claude
 | Checks the modification time of the files listed in the pane (at most 30) | Every 2 seconds | To refresh the pane when a file changes |
 | Reads the files shown in the pane, up to 4 MB each (Word, Excel and PDF files up to 50 MB, see below) | When one is opened or changes | To display it |
 | Reads a picture file a Markdown or HTML file shows (PNG, JPEG or GIF, up to 4 MB, in the document's folder or the working folder only) | When you click that picture's row, in kitty or Ghostty only | To draw it |
-| Reads six environment variables, none of them secret (listed under **Credentials** below) | When the session starts | To know whether the terminal can show pictures, and whether **Open** can work here |
+| Reads four environment variables, none of them secret (listed under **Credentials** below) | When the session starts | To know whether the terminal can show pictures, and whether **Open** can work here |
 | Runs your computer's "open this file" command (`open`, `xdg-open` or `explorer.exe`) on the file shown | Only when you press **Open in …** on a picture card | So you can see the picture in its own app |
 | Calculates Excel formulas that have no saved result, with its own small calculator (`hooks/formulas.ts`). It reads formulas and never runs them as code. Unknown functions are left uncalculated. | When an `.xlsx` is shown | To show values |
 | Runs Python, only if it's on your computer, with the bundled `scripts/read_file.py`, which reads one file and prints its bytes | Only for Word, Excel and PDF files over 4 MB | Claude Code reads at most 4 MB for a mod |
@@ -228,7 +228,7 @@ This section is for anyone reviewing the code, including Anthropic's directory r
 
 | Hook | What it does with what it sees |
 |---|---|
-| `session.start` | Registers the `/panda` command and the two tools below, reads the six environment variables listed under **Credentials**, and starts the 2-second check of listed files |
+| `session.start` | Registers the `/panda` command and the two tools below, reads the four environment variables listed under **Credentials**, and starts the 2-second check of listed files |
 | `command.run` for `panda` only | Answers its own `/panda` command. It doesn't see or change other commands. |
 | `tool.call` for `Bash` | After the command has run, rereads listed files that changed and lists the working folder for new documents (see the table above) |
 | `tool.call` for `Write` and `Edit` | After the tool has run, notes the file it wrote so the pane can show it |
@@ -239,7 +239,7 @@ This section is for anyone reviewing the code, including Anthropic's directory r
 
 **Programs it runs.** Two kinds, and nothing else.
 
-First, your computer's own "open this file" command, only when you press **Open in …** on a picture card: `open` on a Mac, `xdg-open` on Linux, `explorer.exe` on Windows. It's run without a shell, with the path of the file shown in the pane as its only argument, as double-clicking the file would (`openOutside`). It's never offered over SSH.
+First, your computer's own "open this file" command, only when you press **Open in …** on a picture card: `open` on a Mac, `xdg-open` on Linux, `explorer.exe` on Windows. It's run without a shell, with the path of the file shown in the pane as its only argument, as double-clicking the file would (`openOutside`). On Linux it's only offered when there's a desktop to open the file on.
 
 Second, Python, only if it's already on your computer, running one of the plugin's two bundled scripts in the plugin's own folder. Both use the standard library only. These commands are written as fixed text in `startScript`; nothing from a document or a path is ever part of one:
 
@@ -264,9 +264,24 @@ It also uses `$.prompt.fill`, never `submit`, for one fixed request, when `/pand
 
 **What it writes.** Only sample files, into a new folder, on `/panda examples`: the text samples it writes itself, the Excel and Word samples and the picture through `make_examples.py`. The auto-open setting, and whether you've seen the welcome message, are kept in Claude Code's own plugin store. Nothing writes build, start-up, settings or instruction files.
 
-**Credentials.** The mod reads none: no settings and no configuration of other plugins. It reads six environment variables, none of them secret: `TERM` and `TERM_PROGRAM` (can this terminal show real pictures?), `SSH_CONNECTION` and `SSH_TTY` (is this a remote session, where Open would open on the server?), and `DISPLAY` and `WAYLAND_DISPLAY` (does this Linux have a desktop to open files on?). It has no `user_config` because it needs no secrets. Its colours are Claude Code's own theme colours, so it doesn't need to read your theme setting either. Where the code says "key" (`hooks/register.tsx`, `hooks/viewer.tsx`), it means a keyboard key or a store key, such as the arrow keys or the auto-open setting.
+**Credentials.** The mod reads none: no settings and no configuration of other plugins. It reads four environment variables, none of them secret: `TERM` and `TERM_PROGRAM` (can this terminal show real pictures?), and `DISPLAY` and `WAYLAND_DISPLAY` (does this Linux have a desktop to open files on?). It has no `user_config` because it needs no secrets. Its colours are Claude Code's own theme colours, so it doesn't need to read your theme setting either. Where the code says "key" (`hooks/register.tsx`, `hooks/viewer.tsx`), it means a keyboard key or a store key, such as the arrow keys or the auto-open setting.
 
 **The `tests/` folder.** This holds the automated tests, run with `claude plugin test`. Claude Code never loads them when you use the plugin. To simulate Claude Code, the tests' mock hooks stand in for `tool.call`, `process.spawn`, `tool.register` and other events, and the tests call tools and the `/panda` command themselves.
+
+### Notes for the directory review
+
+Each automated finding, answered:
+
+| Finding | What the mod does |
+|---|---|
+| Starts programs (`MOD_RUNS_PROCESS`), command not all fixed text (`MOD_PROCESS_COMMAND_COMPUTED`) | Two kinds only, both described under **Programs it runs** above. `process.spawn` runs Python with a fixed argument list (`python3 -I ./scripts/read_file.py` or `./scripts/make_examples.py`, or `py -3 -I …`, `python -I …`) in the plugin's own folder; only which of those fixed lists is used varies, and file paths go on standard input. `process.run` runs `open`, `xdg-open` or `explorer.exe` with the shown file's path as its one argument, only when you press **Open in …**. |
+| Reads local data and can send data out (`MOD_LOCAL_DATA_LEAVES`), reads the conversation and can send data out (`MOD_SESSION_DATA_LEAVES`) | Nothing leaves the machine. The "way out" the scan names is `process.run`, which only opens the shown file in your own app; no file content and no conversation text is passed to it. The mod reads your prompt box only to add to what you typed. It makes no network requests. |
+| Submits a prompt that can carry read text (`MOD_DATA_LEAVES_BY_PROMPT`) | Yes, by design and only when you press **Send** or **Edit before sending**: the prompt holds, for each comment, the file name, the place, the quoted part of the file (at most 1,200 characters) and your comment. See **What Claude receives**. It goes to Claude in your own session. |
+| Writes files (`MOD_WRITES_BUILD_FILE`, "Mod writes files") | Only the sample files of `/panda examples`: the text samples copied from the plugin's `examples/` folder, and, if Python is there, the Excel, Word and picture samples written by `make_examples.py`, all into a new folder it creates (`lazy-panda-panel-examples`, or `-2`, `-3`…). It never writes a build, start-up, settings or instruction file, and never overwrites anything. |
+| Hooks an event that is also a call (`command.run`) | The hook answers only its own `/panda` command, matched by name; it never sees or changes any other command, and an error passes the event on unchanged. |
+| Adds tools and a command | `open_file` and `open_files` (open files in the pane, return a one-line status, never file content) and `/panda`. |
+| A command could reach an image (`UNREAD_ASSET_REFERENCED`) | **Open in …** hands a picture the person is looking at to the computer's own image viewer. The plugin's bundled images (`docs/`) are only shown in this README; no code reads them. |
+| Credential words (`MCP_FORWARDS_CREDENTIAL_ENV`) | The mod reads no credentials: no tokens, keys or secrets, from the environment or anywhere else. The only environment variables it reads are `TERM`, `TERM_PROGRAM`, `DISPLAY` and `WAYLAND_DISPLAY`. PDF code that opens files saved with an *empty* password is local decoding only. |
 
 ### Things to know
 - **While the comment box has the keys, what you type goes into the comment**, not to Claude. Press **Esc** to go back to Claude's prompt.

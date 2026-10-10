@@ -263,7 +263,7 @@ const INSTALL_PYTHON_REQUEST = [
   '- First check which computer this is (Windows, Mac or Linux) and whether Python 3 is already installed but not found (on Windows, try “py --version”). If it is, help me with that instead of installing a second copy.',
   '- Before installing anything, tell me what you’d install, where it comes from and roughly how big it is, and wait for my yes. If I say no, stop.',
   '- Use only official sources. Windows: winget (with --accept-package-agreements --accept-source-agreements) or the python.org installer; there, “python3” may only be a link to the Microsoft Store, so don’t rely on it. Mac: the installer from python.org, opened so I can click through it (Homebrew only if I already have it). Linux: the system’s python3 package.',
-  '- If a step needs my password (sudo or an administrator prompt), don’t run it yourself: give me the exact command and tell me to paste it into a separate terminal window.',
+  '- If a step needs administrator rights (sudo or an administrator prompt), don’t run it yourself: give me the exact command and tell me to paste it into a separate terminal window.',
   '- Don’t install any Python packages and don’t change anything else on my computer: the panel needs Python 3 only.',
   '- When it’s done, check that it works, then tell me how to restart. On Windows: close this terminal window completely, open a new one, and start Claude Code again. On a Mac or Linux: type /exit and start Claude Code again. Then I run /panda setup to check.',
 ].join('\n')
@@ -372,9 +372,8 @@ async function isMacWithoutPython($: EngineInterface): Promise<boolean> {
   return true
 }
 
-/** The command that opens a file in its usual app here: none over SSH (it would open on the server) or on a Linux without a desktop. */
+/** The command that opens a file in its usual app here: none on a Linux without a desktop (a server reached over SSH has none). */
 async function openerHere($: EngineInterface): Promise<typeof session.opener> {
-  if ((await $.env.get('SSH_CONNECTION')) || (await $.env.get('SSH_TTY'))) return null
   if (/^[a-z]:\//i.test(session.folder) || session.folder.startsWith('//')) return 'explorer'
   if (await $.fs.exists('/System/Library/CoreServices/SystemVersion.plist')) return 'open'
   return (await $.env.get('DISPLAY')) || (await $.env.get('WAYLAND_DISPLAY')) ? 'xdg-open' : null
@@ -1010,93 +1009,94 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'panda' }, async ($, e) => {
-    const args = e.args.trim()
-    // Keywords in any case and spacing: "/panda Auto  On" is "auto on".
-    const word = args.toLowerCase().replace(/\s+/g, ' ')
-    // Only the person changes settings, writes samples or opens files outside the working folder; anything else running /panda can't.
-    // The person at the terminal (or on Remote Control): not another plugin, a peer session, a channel or a scheduled task.
-    const isPerson = ['composer', 'bridge', undefined].includes(e.origin?.kind as string | undefined)
-    if (word === 'auto on' || word === 'auto off') {
-      if (!isPerson) return { text: 'Only you can change auto-open: type /panda auto on|off.', exitCode: 1 }
-      const isOn = word === 'auto on'
-      await setAutoOpen($, isOn)
-      return {
-        text: isOn
-          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML, Markdown or Confluence files, the Lazy Panda Panel opens on them.`
-          : 'Auto-open is off. New files are listed in the pane; open it with /panda.',
+    try {
+      const args = e.args.trim()
+      // Keywords in any case and spacing: "/panda Auto  On" is "auto on".
+      const word = args.toLowerCase().replace(/\s+/g, ' ')
+      // Only the person changes settings, writes samples or opens files outside the working folder; anything else running /panda can't.
+      // The person at the terminal (or on Remote Control): not another plugin, a peer session, a channel or a scheduled task.
+      const isPerson = ['composer', 'bridge', undefined].includes(e.origin?.kind as string | undefined)
+      if (word === 'auto on' || word === 'auto off') {
+        if (!isPerson) return { text: 'Only you can change auto-open: type /panda auto on|off.', exitCode: 1 }
+        const isOn = word === 'auto on'
+        await setAutoOpen($, isOn)
+        return {
+          text: isOn
+            ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML, Markdown or Confluence files, the Lazy Panda Panel opens on them.`
+            : 'Auto-open is off. New files are listed in the pane; open it with /panda.',
+        }
       }
+      if (word === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /panda auto on|off.` }
+      if (word === 'examples' || word.startsWith('examples ')) {
+        if (!isPerson) return { text: 'Only you can write the samples: type /panda examples.', exitCode: 1 }
+        // Always a new folder, so nothing is ever written over, nor through a link someone left there.
+        const base = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
+        let folder = base
+        for (let k = 2; await $.fs.exists(folder); k += 1) {
+          if (k > 99) return { text: `There are already 99 sample folders next to ${base}. Delete some, or name another: /panda examples <folder>.`, exitCode: 1 }
+          folder = `${base}-${k}`
+        }
+        const texts: string[] = []
+        for (const name of EXAMPLE_TEXTS) {
+          const target = `${folder}/${name}`
+          await $.fs.write(target, await $.fs.read(`${$.plugin.root}/examples/${name}`))
+          texts.push(target)
+        }
+        // The Excel and Word samples and the picture are binary files, which only Python can write here.
+        const made = await runPython($, 'examples', folder, 30_000)
+        const binaries =
+          typeof made === 'string' && made !== 'none' && made !== 'timeout'
+            ? made
+                .split(/\r?\n/)
+                .filter(line => line.startsWith('LPP1 wrote '))
+                .map(line => normalizePath(line.slice('LPP1 wrote '.length).trim()))
+            : []
+        const written = [...binaries, ...texts]
+        await update($, files, old => [...written, ...old.filter(path => !written.includes(path))].slice(0, MAX_FILES))
+        if (written[0]) await show($, written[0])
+        await openPane($)
+        return {
+          text:
+            `Wrote ${written.length} sample files to ${folder} and opened them in the Lazy Panda Panel.` +
+            (binaries.length > 0 ? '' : ' The Excel, Word and picture samples need Python 3 on this computer (optional; /panda setup checks). You can also ask Claude to make you a sample spreadsheet.'),
+        }
+      }
+      if (word === 'setup') {
+        // Setup installs nothing: it looks for Python 3, which only Word, Excel and PDF files over 4 MB need.
+        session.python = null
+        const found = await runPython($, 'read', '--check', 15_000)
+        if (found !== 'none' && found !== 'timeout') {
+          const version = /LPP1 ok (\S+)/.exec(found)?.[1] ?? '3'
+          return { text: `Python ${version} is ready. There’s nothing to install: Word, Excel and PDF files over 4 MB will open too.` }
+        }
+        const intro = 'Everything up to 4 MB already opens without Python. Python 3 is only needed for Word, Excel and PDF files over 4 MB, and it isn’t on this computer (or Claude Code can’t see it yet). Nothing has been installed.'
+        const isOffered = isPerson && (await offerRequest($, INSTALL_PYTHON_REQUEST))
+        return {
+          text: isOffered
+            ? `${intro}\nIf you’d like Claude to help you install it, press Enter: the request is in your prompt box, and Claude will ask before installing anything. If not, delete the text in the prompt box.`
+            : `${intro}\nIf you’d like it, ask Claude: “Please help me install Python 3 for the Lazy Panda Panel.”`,
+        }
+      }
+      if (args) {
+        let path = typedPath(args)
+        const plain = unescaped(args)
+        if (!(await $.fs.exists(path)) && plain !== null && (await $.fs.exists(typedPath(plain)))) path = typedPath(plain)
+        if (!(await $.fs.exists(path))) return { text: `No file at ${path}.${/^~/.test(args.trim()) && !homeOf(session.folder) ? ' Type the full path: ~ can’t be worked out here.' : ''}`, exitCode: 1 }
+        if ((await $.fs.stat(path)).kind === 'dir') return { text: `${path} is a folder. Name a file in it: /panda ${path}/<file>.`, exitCode: 1 }
+        if (!isSupported(path)) return { text: `The pane does not show .${extOf(path) || '(no extension)'} files. It shows ${[...TEXT_KINDS, ...DOC_KINDS, 'png'].join(', ')}.`, exitCode: 1 }
+        if (!isPerson && !(await isAllowed($, path))) return { text: `${path} is outside the working folder; only you can open it, with /panda ${path}.`, exitCode: 1 }
+        await show($, path)
+      } else if ((await read($, open)).path === null) {
+        const first = (await read($, files))[0]
+        if (first) await show($, first)
+      }
+      const opened = await openPane($)
+      return { text: opened.isPlaced ? 'Lazy Panda Panel opened.' : 'The Lazy Panda Panel needs a wider terminal: make the window wider, or run /panda again.' }
+    } catch (failure) {
+      // Whatever went wrong, /panda answers with it, rather than Claude Code's note that no hook answered.
+      return { text: `/panda ${sanitizeLine(e.args.trim(), 200)} failed: ${sanitizeLine(String((failure as { message?: unknown })?.message ?? failure), 300)}`, exitCode: 1 }
     }
-    if (word === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /panda auto on|off.` }
-    if (word === 'examples' || word.startsWith('examples ')) {
-      if (!isPerson) return { text: 'Only you can write the samples: type /panda examples.', exitCode: 1 }
-      // Always a new folder, so nothing is ever written over, nor through a link someone left there.
-      const base = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
-      let folder = base
-      for (let k = 2; await $.fs.exists(folder); k += 1) {
-        if (k > 99) return { text: `There are already 99 sample folders next to ${base}. Delete some, or name another: /panda examples <folder>.`, exitCode: 1 }
-        folder = `${base}-${k}`
-      }
-      const texts: string[] = []
-      for (const name of EXAMPLE_TEXTS) {
-        const target = `${folder}/${name}`
-        await $.fs.write(target, await $.fs.read(`${$.plugin.root}/examples/${name}`))
-        texts.push(target)
-      }
-      // The Excel and Word samples and the picture are binary files, which only Python can write here.
-      const made = await runPython($, 'examples', folder, 30_000)
-      const binaries =
-        typeof made === 'string' && made !== 'none' && made !== 'timeout'
-          ? made
-              .split(/\r?\n/)
-              .filter(line => line.startsWith('LPP1 wrote '))
-              .map(line => normalizePath(line.slice('LPP1 wrote '.length).trim()))
-          : []
-      const written = [...binaries, ...texts]
-      await update($, files, old => [...written, ...old.filter(path => !written.includes(path))].slice(0, MAX_FILES))
-      if (written[0]) await show($, written[0])
-      await openPane($)
-      return {
-        text:
-          `Wrote ${written.length} sample files to ${folder} and opened them in the Lazy Panda Panel.` +
-          (binaries.length > 0 ? '' : ' The Excel, Word and picture samples need Python 3 on this computer (optional; /panda setup checks). You can also ask Claude to make you a sample spreadsheet.'),
-      }
-    }
-    if (word === 'setup') {
-      // Setup installs nothing: it looks for Python 3, which only Word, Excel and PDF files over 4 MB need.
-      session.python = null
-      const found = await runPython($, 'read', '--check', 15_000)
-      if (found !== 'none' && found !== 'timeout') {
-        const version = /LPP1 ok (\S+)/.exec(found)?.[1] ?? '3'
-        return { text: `Python ${version} is ready. There’s nothing to install: Word, Excel and PDF files over 4 MB will open too.` }
-      }
-      const intro = 'Everything up to 4 MB already opens without Python. Python 3 is only needed for Word, Excel and PDF files over 4 MB, and it isn’t on this computer (or Claude Code can’t see it yet). Nothing has been installed.'
-      const isOffered = isPerson && (await offerRequest($, INSTALL_PYTHON_REQUEST))
-      return {
-        text: isOffered
-          ? `${intro}\nIf you’d like Claude to help you install it, press Enter: the request is in your prompt box, and Claude will ask before installing anything. If not, delete the text in the prompt box.`
-          : `${intro}\nIf you’d like it, ask Claude: “Please help me install Python 3 for the Lazy Panda Panel.”`,
-      }
-    }
-    if (args) {
-      let path = typedPath(args)
-      const plain = unescaped(args)
-      if (!(await $.fs.exists(path)) && plain !== null && (await $.fs.exists(typedPath(plain)))) path = typedPath(plain)
-      if (!(await $.fs.exists(path))) return { text: `No file at ${path}.${/^~/.test(args.trim()) && !homeOf(session.folder) ? ' Type the full path: ~ can’t be worked out here.' : ''}`, exitCode: 1 }
-      if ((await $.fs.stat(path)).kind === 'dir') return { text: `${path} is a folder. Name a file in it: /panda ${path}/<file>.`, exitCode: 1 }
-      if (!isSupported(path)) return { text: `The pane does not show .${extOf(path) || '(no extension)'} files. It shows ${[...TEXT_KINDS, ...DOC_KINDS, 'png'].join(', ')}.`, exitCode: 1 }
-      if (!isPerson && !(await isAllowed($, path))) return { text: `${path} is outside the working folder; only you can open it, with /panda ${path}.`, exitCode: 1 }
-      await show($, path)
-    } else if ((await read($, open)).path === null) {
-      const first = (await read($, files))[0]
-      if (first) await show($, first)
-    }
-    const opened = await openPane($)
-    return { text: opened.isPlaced ? 'Lazy Panda Panel opened.' : 'The Lazy Panda Panel needs a wider terminal: make the window wider, or run /panda again.' }
-  }).catch(($, e, next) => ({
-    // Whatever went wrong, /panda answers with it, rather than Claude Code's note that no hook answered.
-    text: `/panda ${e.args.trim()} failed: ${sanitizeLine(String((next.error as { message?: unknown } | undefined)?.message ?? next.error ?? 'unknown error'), 400)}`,
-    exitCode: 1,
-  }))
+  }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'mcp__lazy-panda-panel__open_file' }, async ($, e) => {
     // A live session puts the arguments on the event; the test kit under `input`.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.3 — 2026-10-10
+
+Answers to the directory's review findings; nothing changes in how the pane looks or works.
+- `/panda` handles its own errors inside the hook, and its error path passes the event on unchanged (`MOD_ANSWERS_PERMISSION`).
+- No longer reads `SSH_CONNECTION` or `SSH_TTY`: on Linux, **Open in …** is offered only when there's a desktop (`DISPLAY` or `WAYLAND_DISPLAY`), which an SSH session to a server doesn't have. Wording that looked like credentials is gone from the code (`MCP_FORWARDS_CREDENTIAL_ENV`).
+- README: a **Notes for the directory review** section answers each finding.
+
 ## 0.9.2 — 2026-10-10
 
 - Directory check MOD_CAPABILITY_USE_NOT_PLAIN: the helper that takes `$` is renamed `knownPath`, so no other name in the file (a local `listed` remained) can be mistaken for it. No change in behaviour.
