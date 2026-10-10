@@ -143,6 +143,15 @@ That's all. **Nothing else to install:** every file type opens straight away, wi
 
 **Big files open fast.** The pane shows the first 500 rows of each sheet, the first 4,000 rows of a Word document or PDF, and reads only as much of a file as that needs. A note says when there's more.
 
+## Example prompts
+
+Four ways to try it, each of which works as written:
+
+1. **Make something, then review it.** Ask Claude: *"Make a 6-month budget for our solar pilot in pilot-budget.xlsx, then open it in the Lazy Panda Panel."* Click a cell, comment, and press **Send**.
+2. **Try the samples.** Type `/panda examples`. Sample Markdown, Confluence, HTML and CSV files (and Excel, Word and a picture, if Python is installed) open in the pane.
+3. **Open files you already have.** Ask Claude: *"Open the PRD and the backlog in the Lazy Panda Panel."* Each opens as a tab; switch with ← → or ▾.
+4. **Open one file yourself.** Type `/panda report.docx`, click a paragraph, type what should change, press Enter, then **Send**. Claude edits the file and the changed paragraph glows.
+
 ## Limits and known issues
 
 These are the limits we know about, so nothing surprises you.
@@ -181,6 +190,20 @@ Why 4 MB: that's the most Claude Code lets a mod read. Python, when it's there, 
 - **The Claude desktop app** shows the pane, but pictures are always cards there.
 - **Windows** is supported and covered by tests, but hasn't yet been tried by hand on a Windows PC with this version.
 - **Hidden content shows.** Hidden Word text, hidden Excel columns, hidden sheets (marked hidden) and white-on-white PDF text appear like any other text.
+
+## Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| `/panda` does nothing, or Claude Code says the command doesn't exist | Run `/reload-plugins` (or restart Claude Code) after installing or updating. Check that `lazy-panda-panel` is enabled in `/plugin`. |
+| What I typed went to Claude instead of the comment | Click the line, paragraph or cell first: the comment box then takes the keys. If you'd already typed something in Claude's prompt box, click the comment box itself. |
+| What I typed went into a comment instead of to Claude | Press **Esc** to give the keys back to Claude's prompt. Sending your comments does this too. |
+| A Word, Excel or PDF file says it needs Python | It's over 4 MB, the most Claude Code lets a mod read. Run `/panda setup` to check for Python 3; it installs nothing itself. |
+| A picture shows as a card, not a picture | Your terminal can't draw pictures (only kitty and Ghostty can). Press **Open in …**, or open the file on your computer. See [Pictures and images](#pictures-and-images). |
+| The pane didn't update after Claude changed the file | It checks every 2 seconds. If **⟳ Changed · Reload** is lit, press it. |
+| The pane is too small, or parts are missing | Drag the pane taller or wider. Below 26 rows it drops spacing and hints so the comment box always fits. |
+| The mouse wheel doesn't scroll inside tmux | Add `set -g mouse on` to `~/.tmux.conf`, or use PgUp/PgDn. |
+| Something else | Open an issue (see [Support](#support)) with your Claude Code version, operating system and terminal. |
 
 ## What Claude receives
 
@@ -317,6 +340,13 @@ This writes samples into a new folder, `./lazy-panda-panel-examples` (or `-2`, `
 
 - [How it works](docs/HOW-IT-WORKS.md): the architecture, for anyone changing the code
 - [Changelog](CHANGELOG.md)
+
+## Support
+
+- **Questions, bugs and ideas:** open an issue at [github.com/paragpandyareal/lazy-panda-panel/issues](https://github.com/paragpandyareal/lazy-panda-panel/issues).
+- **Security problems:** report privately as [SECURITY.md](SECURITY.md) describes (the repository's **Security** tab, **Report a vulnerability**). You'll get a reply within 7 days.
+- **Privacy:** see the [privacy policy](PRIVACY.md).
+- **Author:** [Parag Pandya](https://github.com/paragpandyareal).
 
 ## License
 

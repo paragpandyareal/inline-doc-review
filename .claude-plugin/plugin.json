@@ -1,7 +1,7 @@
 {
   "name": "lazy-panda-panel",
   "displayName": "Lazy Panda Panel",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "Review docs without lifting a paw. Your files open right where you’re working. Excel, Word, PDF, Markdown, Confluence (ADF), HTML and pictures: highlight a part, comment, and Claude edits the real file. Nothing to install (Word, Excel and PDF files over 4 MB need Python).",
   "author": {
     "name": "Parag Pandya",
@@ -23,5 +23,8 @@
     "mod"
   ],
   "types": "./types/index.d.ts",
-  "privacyPolicyUrl": "https://github.com/paragpandyareal/lazy-panda-panel/blob/main/PRIVACY.md"
+  "privacyPolicyUrl": "https://github.com/paragpandyareal/lazy-panda-panel/blob/main/PRIVACY.md",
+  "documentationUrl": "https://github.com/paragpandyareal/lazy-panda-panel#readme",
+  "supportUrl": "https://github.com/paragpandyareal/lazy-panda-panel/issues",
+  "termsOfServiceUrl": "https://github.com/paragpandyareal/lazy-panda-panel/blob/main/LICENSE"
 }

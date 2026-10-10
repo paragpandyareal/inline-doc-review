@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4 — 2026-10-10
+
+README only, for the Anthropic Software Directory Policy: **Example prompts** (four that work as written), **Troubleshooting**, and **Support** (issues, private security reports, privacy policy, author).
+
 ## 0.9.3 — 2026-10-10
 
 Answers to the directory's review findings; nothing changes in how the pane looks or works.
