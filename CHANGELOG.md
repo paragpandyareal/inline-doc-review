@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2 — 2026-10-10
+
+- Directory check MOD_CAPABILITY_USE_NOT_PLAIN: the helper that takes `$` is renamed `knownPath`, so no other name in the file (a local `listed` remained) can be mistaken for it. No change in behaviour.
+
 ## 0.9.1 — 2026-10-10
 
 Fixes for the directory's automated checks; nothing changes in how the pane looks or works.

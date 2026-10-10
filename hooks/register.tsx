@@ -507,7 +507,7 @@ async function hold($: EngineInterface, path: string, d: Doc, isRaw: boolean) {
 }
 
 /** The spelling of `path` already in the list, if Windows would call them the same file (case aside). */
-async function listed($: EngineInterface, path: string): Promise<string> {
+async function knownPath($: EngineInterface, path: string): Promise<string> {
   const key = sameCase(path)
   return (await read($, files)).find(one => sameCase(one) === key) ?? path
 }
@@ -558,7 +558,7 @@ async function resetView($: EngineInterface, sel: ReviewSelection | null, raw = 
 }
 
 async function show($: EngineInterface, wanted: string) {
-  const path = await listed($, wanted)
+  const path = await knownPath($, wanted)
   const shownBefore = (await read($, open)).path
   if (shownBefore !== null && shownBefore !== path) session.switches += 1
   intended = path
@@ -647,7 +647,7 @@ async function isAllowed($: EngineInterface, path: string): Promise<boolean> {
  */
 async function noteFile($: EngineInterface, path: string | undefined, isWritten: boolean) {
   if (!path || !isSupported(path)) return
-  const absolute = await listed($, resolvePath(path))
+  const absolute = await knownPath($, resolvePath(path))
   session.turnFiles.add(absolute)
   if (isWritten) session.claudeWrote.add(absolute)
   await track($, absolute)
