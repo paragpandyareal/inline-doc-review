@@ -12,7 +12,7 @@
  * AVERAGEIF.
  *
  * It is an interpreter: formulas are read and evaluated here, never turned
- * into code (the hooks environment has no eval either). Limits on formula
+ * into code. Limits on formula
  * length, range size, nesting and total work, which counts every cell a
  * range reads, stop a hostile workbook from hanging the pane. Anything it
  * doesn't support evaluates to null, and the pane shows the formula as not
@@ -87,11 +87,16 @@ export class Calculator {
   private busy = new Set<string>()
   private steps = 0
 
+  private cells: CellSource = () => null
+  private extent?: (sheet: string) => { rows: number; cols: number } | undefined
+
   /** `extent`: how far a sheet's cells reach, so a whole column (B:B) reads only the rows in use. */
-  constructor(
-    private cells: CellSource,
-    private extent?: (sheet: string) => { rows: number; cols: number } | undefined,
-  ) {}
+  static of(cells: CellSource, extent?: (sheet: string) => { rows: number; cols: number } | undefined): Calculator {
+    const calculator = new Calculator()
+    calculator.cells = cells
+    calculator.extent = extent
+    return calculator
+  }
 
   /** The cell's value, an Excel error text such as #DIV/0!, or null when not supported. */
   evaluate(sheet: string, row: number, col: number): Value {

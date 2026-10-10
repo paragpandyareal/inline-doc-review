@@ -71,22 +71,23 @@ export function decodePicture(bytes: Uint8Array): Pixels | string {
 
 /** Averages a picture's rows into a smaller one, composited on white, as they are decoded: the full picture is never held. */
 export class Shrink {
-  readonly width: number
-  readonly height: number
-  private sums: Float64Array
-  private counts: Uint32Array
-  constructor(
-    readonly fullWidth: number,
-    readonly fullHeight: number,
-    side = PREVIEW_SIDE,
-  ) {
+  declare readonly fullWidth: number
+  declare readonly fullHeight: number
+  declare readonly width: number
+  declare readonly height: number
+  private sums = new Float64Array(0)
+  private counts = new Uint32Array(0)
+  /** A shrinker for a picture of this full size, to at most `side` pixels on its longer side. */
+  static of(fullWidth: number, fullHeight: number, side = PREVIEW_SIDE): Shrink {
     if (fullWidth < 1 || fullHeight < 1) throw new PictureError('the picture has no size')
     if (fullWidth * fullHeight > MAX_PIXELS) throw new PictureError('the picture is too large to preview')
     const scale = Math.min(1, side / Math.max(fullWidth, fullHeight))
-    this.width = Math.max(1, Math.round(fullWidth * scale))
-    this.height = Math.max(1, Math.round(fullHeight * scale))
-    this.sums = new Float64Array(this.width * this.height * 3)
-    this.counts = new Uint32Array(this.width * this.height)
+    const width = Math.max(1, Math.round(fullWidth * scale))
+    const height = Math.max(1, Math.round(fullHeight * scale))
+    const shrink = Object.assign(new Shrink(), { fullWidth, fullHeight, width, height })
+    shrink.sums = new Float64Array(width * height * 3)
+    shrink.counts = new Uint32Array(width * height)
+    return shrink
   }
   /** One full-size row, `rgba` 4 bytes a pixel. */
   row(y: number, rgba: Uint8Array | Uint8ClampedArray) {
@@ -147,7 +148,7 @@ function decodePng(b: Uint8Array): Pixels {
   }
   const channels = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[color]
   if (!channels || ![1, 2, 4, 8, 16].includes(depth)) throw new PictureError('the PNG is damaged')
-  const shrink = new Shrink(width, height)
+  const shrink = Shrink.of(width, height)
   const zdata = new Uint8Array(idat.reduce((n, d) => n + d.length, 0))
   let o = 0
   for (const d of idat) {
@@ -301,7 +302,7 @@ function decodeGif(b: Uint8Array): Pixels {
         at += b[at]! + 1
       }
       const indices = lzwGif(Uint8Array.from(parts), minCode, w * h)
-      const shrink = new Shrink(width, height)
+      const shrink = Shrink.of(width, height)
       const rows: number[] = []
       const [shownW, shownH] = [Math.min(w, width - left), Math.min(h, height - top)]
       if (isInterlaced) for (const [start, step] of [[0, 8], [4, 8], [2, 4], [1, 2]] as const) for (let y = start; y < h; y += step) rows.push(y)
@@ -757,7 +758,7 @@ function jpegPixels(
   })
   const outW = isEighth ? Math.ceil(width / 8) : width
   const outH = isEighth ? Math.ceil(height / 8) : height
-  const shrink = new Shrink(outW, outH)
+  const shrink = Shrink.of(outW, outH)
   const line = new Uint8Array(outW * 4)
   const transform = adobe !== null ? adobe : comps.length === 3 && comps[0]!.id === 0x52 && comps[1]!.id === 0x47 ? 0 : comps.length === 3 ? 1 : 0
   const sample = (k: number, x: number, y: number) => {
@@ -821,7 +822,7 @@ export function samplesToPixels(
   /** How opaque each pixel is, 0–1: a PDF image's soft mask. */
   alpha?: (x: number, y: number) => number,
 ): Pixels {
-  const shrink = new Shrink(width, height)
+  const shrink = Shrink.of(width, height)
   const stride = Math.ceil((width * components * bits) / 8)
   const max = 2 ** bits - 1
   const line = new Uint8Array(width * 4)

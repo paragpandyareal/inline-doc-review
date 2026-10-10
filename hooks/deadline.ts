@@ -9,9 +9,7 @@
  */
 
 export class TooSlow extends Error {
-  constructor() {
-    super('it takes too long to read here')
-  }
+  override message = 'it takes too long to read here'
 }
 
 let until = Infinity

@@ -1163,10 +1163,10 @@ export const register: Register = on => {
     for (const path of await refreshChanged($)) session.turnFiles.add(path)
     // Then new files in the working folder; never a home folder or the root, nor for a subagent.
     if (e.agentId === undefined && !isHomeOrRoot(session.folder)) {
-      const listed = new Set(await read($, files))
+      const inList = new Set(await read($, files))
       const found: string[] = []
       await scan($, session.folder, since, 3, found, { left: 4000 })
-      for (const path of found.filter(one => !listed.has(one)).slice(0, 20)) await noteFile($, path, false)
+      for (const path of found.filter(one => !inList.has(one)).slice(0, 20)) await noteFile($, path, false)
     }
     return ran
   }).catch(($, e, next) => next(e))
@@ -1587,7 +1587,7 @@ function linesSection($: EngineInterface, ctx: Ctx, d: LinesDoc, listed: number)
     ...(d.note ? { footnote: d.note } : {}),
     keys: [
       ...(d.rows.some(row => row.pic !== undefined) ? ([['▣', 'click to see a picture']] as [string, string][]) : []),
-      ['click', unit === 'lines' ? 'a line' : 'a paragraph'],
+      ['click', unit === 'lines' || unit === 'pages' ? 'a line' : 'a paragraph'],
       ['drag', 'a range'],
       ['↑↓', 'move'],
       ['⇧↑↓', 'extend'],

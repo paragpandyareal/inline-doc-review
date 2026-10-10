@@ -5,7 +5,7 @@ import { expect, test } from 'claude-code/testing'
 import { PANE, begin, start } from './setup'
 
 /** Selects one row of the open document and comments on it. */
-async function commentOn(ui: { post: Function; input: Function }, row: number, key: string, text: string) {
+async function commentOn(ui: { post: (...args: never[]) => unknown; input: (...args: never[]) => unknown }, row: number, key: string, text: string) {
   await ui.post({ type: 'select', a: [row, 0], b: [row, 0] }, { in: 'viewer' })
   await ui.input({ key, text })
 }

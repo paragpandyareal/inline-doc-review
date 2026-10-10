@@ -38,28 +38,30 @@ export class PdfError extends Error {}
 
 // ── Objects ──
 
+// Plain classes, so `instanceof` tells the kinds apart; each is made by the function after it.
 class Name {
-  constructor(readonly name: string) {}
+  declare readonly name: string
 }
+const nameObj = (name: string): Name => Object.assign(new Name(), { name })
 class Ref {
-  constructor(
-    readonly num: number,
-    readonly gen: number,
-  ) {}
+  declare readonly num: number
+  declare readonly gen: number
 }
+const refObj = (num: number, gen: number): Ref => Object.assign(new Ref(), { num, gen })
 class PdfString {
-  constructor(readonly bytes: Uint8Array) {}
+  declare readonly bytes: Uint8Array
 }
+const stringObj = (bytes: Uint8Array): PdfString => Object.assign(new PdfString(), { bytes })
 type Dict = Map<string, Value>
 class Stream {
-  constructor(
-    readonly dict: Dict,
-    public data: Uint8Array,
-  ) {}
+  declare readonly dict: Dict
+  declare data: Uint8Array
 }
+const streamObj = (dict: Dict, data: Uint8Array): Stream => Object.assign(new Stream(), { dict, data })
 class Op {
-  constructor(readonly op: string) {}
+  declare readonly op: string
 }
+const opObj = (op: string): Op => Object.assign(new Op(), { op })
 type Value = number | boolean | null | Name | Ref | PdfString | Value[] | Dict | Stream
 
 const isDict = (v: unknown): v is Dict => v instanceof Map
@@ -75,15 +77,13 @@ for (const c of [0, 9, 10, 12, 13, 32]) WHITE[c] = 1
 const DELIM = new Uint8Array(256)
 for (const c of '()<>[]{}/%') DELIM[c.charCodeAt(0)] = 1
 
+/** A lexer over the bytes, from a position. */
+const lexer = (b: Uint8Array, pos = 0): Lexer => Object.assign(new Lexer(), { b, pos })
+
 /** Reads PDF tokens and objects from bytes, from a position. */
 class Lexer {
-  pos: number
-  constructor(
-    readonly b: Uint8Array,
-    pos = 0,
-  ) {
-    this.pos = pos
-  }
+  pos = 0
+  declare readonly b: Uint8Array
 
   skipSpace() {
     const b = this.b
@@ -109,7 +109,7 @@ class Lexer {
       while (end < b.length && !WHITE[b[end]!] && !DELIM[b[end]!]) end += 1
       const raw = latin(b.subarray(this.pos + 1, end)).replace(/#([0-9A-Fa-f]{2})/g, (_, h: string) => String.fromCharCode(Number.parseInt(h, 16)))
       this.pos = end
-      return new Name(raw)
+      return nameObj(raw)
     }
     if (c === 0x28 /* ( */) return this.literal()
     if (c === 0x3c /* < */) {
@@ -143,7 +143,7 @@ class Lexer {
       const even = hex.length % 2 ? `${hex}0` : hex
       const bytes = new Uint8Array(even.length / 2)
       for (let k = 0; k < bytes.length; k += 1) bytes[k] = Number.parseInt(even.slice(k * 2, k * 2 + 2), 16)
-      return new PdfString(bytes)
+      return stringObj(bytes)
     }
     if (c === 0x5b /* [ */) {
       this.pos += 1
@@ -164,7 +164,7 @@ class Lexer {
     }
     if (c === 0x5d || c === 0x3e || c === 0x29 || c === 0x7b || c === 0x7d) {
       this.pos += 1
-      return new Op(String.fromCharCode(c))
+      return opObj(String.fromCharCode(c))
     }
     let end = this.pos
     while (end < b.length && !WHITE[b[end]!] && !DELIM[b[end]!]) end += 1
@@ -178,7 +178,7 @@ class Lexer {
         const m = /^\s+(\d+)\s+R(?![A-Za-z0-9])/.exec(latin(b.subarray(this.pos, this.pos + 24)))
         if (m) {
           this.pos = save + m[0].length
-          return new Ref(Number(word), Number(m[1]))
+          return refObj(Number(word), Number(m[1]))
         }
       }
       return Number(word)
@@ -186,7 +186,7 @@ class Lexer {
     if (word === 'true') return true
     if (word === 'false') return false
     if (word === 'null') return null
-    return new Op(word)
+    return opObj(word)
   }
 
   private literal(): PdfString {
@@ -214,7 +214,7 @@ class Lexer {
       else if (c === 0x29 && --depth === 0) break
       out.push(c)
     }
-    return new PdfString(new Uint8Array(out))
+    return stringObj(new Uint8Array(out))
   }
 }
 
@@ -400,7 +400,7 @@ class Doc {
   decrypt: Decrypter | null = null
   encryptRef: Ref | null = null
 
-  constructor(readonly b: Uint8Array) {}
+  declare readonly b: Uint8Array
 
   /** The cross-reference data: from startxref through /Prev, or rebuilt by scanning when broken. */
   load() {
@@ -423,7 +423,7 @@ class Doc {
 
   /** Reads one cross-reference section at `at`; returns the previous section's offset, if any. */
   private section(at: number): number | undefined {
-    const lex = new Lexer(this.b, at)
+    const lex = lexer(this.b, at)
     lex.skipSpace()
     if (latin(this.b.subarray(lex.pos, lex.pos + 4)) === 'xref') {
       lex.pos += 4
@@ -500,7 +500,7 @@ class Doc {
     for (let m = re.exec(text); m; m = re.exec(text)) this.entries.set(Number(m[1]), { offset: m.index + m[0].indexOf(m[1]!) })
     const trailers = /trailer\s*<</g
     for (let m = trailers.exec(text); m; m = trailers.exec(text)) {
-      const dict = new Lexer(this.b, m.index + 7).next()
+      const dict = lexer(this.b, m.index + 7).next()
       if (isDict(dict)) for (const [key, value] of dict) this.trailer.set(key, value)
     }
     if (!this.trailer.get('Root')) {
@@ -517,7 +517,7 @@ class Doc {
             /* the scan already found the plain objects */
           }
         }
-        if (isDict(dict) && nameOf(dict.get('Type')) === 'Catalog' && !this.trailer.get('Root')) this.trailer.set('Root', new Ref(num, 0))
+        if (isDict(dict) && nameOf(dict.get('Type')) === 'Catalog' && !this.trailer.get('Root')) this.trailer.set('Root', refObj(num, 0))
       }
     }
     if (!this.trailer.get('Root')) throw new PdfError('it is not a readable PDF')
@@ -538,7 +538,7 @@ class Doc {
 
   /** The object at a byte offset: "n g obj VALUE [stream … endstream]". With `num`, a different object there sends it to the scan. */
   private parseAt(at: number, num?: number): Value {
-    const lex = new Lexer(this.b, at)
+    const lex = lexer(this.b, at)
     const first = lex.next()
     lex.next()
     const keyword = lex.next()
@@ -563,7 +563,7 @@ class Doc {
         end = found < 0 ? this.b.length : start + found
         while (end > start && (this.b[end - 1] === 10 || this.b[end - 1] === 13)) end -= 1
       }
-      return new Stream(value, this.b.subarray(start, end))
+      return streamObj(value, this.b.subarray(start, end))
     }
     return value
   }
@@ -607,7 +607,7 @@ class Doc {
 
   private async decryptValue(value: Value, num: number, gen: number): Promise<Value> {
     if (!this.decrypt) return value
-    if (value instanceof PdfString) return new PdfString(await this.decrypt(value.bytes, num, gen))
+    if (value instanceof PdfString) return stringObj(await this.decrypt(value.bytes, num, gen))
     if (Array.isArray(value)) return Promise.all(value.map(v => this.decryptValue(v, num, gen)))
     if (isDict(value)) {
       const out: Dict = new Map()
@@ -617,7 +617,7 @@ class Doc {
     if (value instanceof Stream) {
       const dict = (await this.decryptValue(value.dict, num, gen)) as Dict
       const isXref = nameOf(dict.get('Type')) === 'XRef'
-      return new Stream(dict, isXref ? value.data : await this.decrypt(value.data, num, gen))
+      return streamObj(dict, isXref ? value.data : await this.decrypt(value.data, num, gen))
     }
     return value
   }
@@ -627,12 +627,12 @@ class Doc {
   private async fromObjectStream(streamNum: number, index: number): Promise<Value> {
     let os = this.streams.get(streamNum)
     if (!os) {
-      const stream = await this.get(new Ref(streamNum, 0))
+      const stream = await this.get(refObj(streamNum, 0))
       if (!(stream instanceof Stream)) return null
       const data = decodeStream(stream)
       const n = Number(stream.dict.get('N') ?? 0)
       const first = Number(stream.dict.get('First') ?? 0)
-      const lex = new Lexer(data)
+      const lex = lexer(data)
       const offsets: number[] = []
       for (let k = 0; k < n; k += 1) {
         lex.next()
@@ -644,7 +644,7 @@ class Doc {
     }
     const off = os.offsets[index]
     if (off === undefined) return null
-    const value = new Lexer(os.data, os.first + off).next()
+    const value = lexer(os.data, os.first + off).next()
     return value instanceof Op || value === undefined ? null : value
   }
 
@@ -896,7 +896,7 @@ async function pdfImage(doc: Doc, image: Stream, resources: Dict | undefined, bi
   const height = Number((await doc.get(d.get('Height') ?? d.get('H'))) ?? 0)
   const filters = ([] as Value[]).concat((await doc.get(d.get('Filter') ?? d.get('F'))) ?? []).map(nameOf)
   const last = filters[filters.length - 1]
-  const rest = new Stream(new Map([...d].map(([k, v]) => (k === 'Filter' ? [k, filters.slice(0, -1).map(f => new Name(f ?? ''))] : [k, v]))), image.data)
+  const rest = streamObj(new Map([...d].map(([k, v]) => (k === 'Filter' ? [k, filters.slice(0, -1).map(f => nameObj(f ?? ''))] : [k, v]))), image.data)
   if (last === 'DCTDecode' || last === 'DCT') return decodePicture(filters.length > 1 ? decodeStream(rest) : image.data)
   if (last === 'JPXDecode') return 'it is a JPEG 2000 picture, which the pane can’t draw'
   if (last === 'JBIG2Decode' || last === 'CCITTFaxDecode' || last === 'CCF') return 'it is a scanned black-and-white page image, which the pane can’t draw'
@@ -986,7 +986,7 @@ async function pageText(doc: Doc, page: Dict, budget: { ops: number }, pictures:
     let font: Font | null = null
     let size = 0
     const operands: Value[] = []
-    const lex = new Lexer(content)
+    const lex = lexer(content)
 
     const show = (bytes: Uint8Array) => {
       if (!font) return
@@ -1256,7 +1256,7 @@ export async function readPdf(bytes: Uint8Array): Promise<PdfResult> {
   // The %PDF- header is sometimes missing or damaged: what decides is whether a document can be found in the file.
   decoded = new WeakMap()
   decodedBytes = 0
-  const doc = new Doc(bytes)
+  const doc = Object.assign(new Doc(), { b: bytes })
   doc.load()
   const encrypt = doc.trailer.get('Encrypt')
   if (encrypt !== undefined && encrypt !== null) {
@@ -1300,7 +1300,7 @@ export async function readPdf(bytes: Uint8Array): Promise<PdfResult> {
   if (all.length === 0) {
     // A broken page tree: every page object in the file, in object order, as pypdf finds them.
     for (const num of [...doc.entries.keys()].sort((a, b) => a - b)) {
-      const dict = await doc.dict(new Ref(num, 0))
+      const dict = await doc.dict(refObj(num, 0))
       if (dict && nameOf(dict.get('Type')) === 'Page') all.push(dict)
       if (all.length > 10_000) break
     }

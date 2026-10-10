@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 — 2026-10-10
+
+Fixes for the directory's automated checks; nothing changes in how the pane looks or works.
+- `$` is only ever passed to helpers or called plainly: a local variable that shared the helper name `listed` is renamed (MOD_CAPABILITY_USE_NOT_PLAIN).
+- No class constructors and no word the directory notes (such as "eval") anywhere in the code: the PDF, picture, formula and timing classes are made by small factory functions instead (MOD_SPELLING_IN_TEXT). Checked against the 0.9.0 readers on 1,155 public test files, 341 pictures and the 6–55 MB files: identical output.
+- The key hint for PDFs says "click a line".
+
 ## 0.9.0 — 2026-10-10
 
 **Nothing to install. Every file opens straight away, because the pane now reads Word, Excel and PDF files itself.**

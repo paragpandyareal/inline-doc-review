@@ -414,7 +414,7 @@ export function readXlsx(bytes: Uint8Array): GridResult {
   })
 
   const byName = new Map(books.map(b => [b.name, b]))
-  const calculator = new Calculator((sheetName, row, col) => {
+  const calculator = Calculator.of((sheetName, row, col) => {
     const cell = byName.get(sheetName)?.cells.get(key(row, col))
     if (!cell) return null
     // A saved result wins; a formula with none is worked out.
