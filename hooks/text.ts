@@ -12,13 +12,23 @@
 /** ANSI escapes, C0/C1 controls (but tab and newline) and bidi overrides: never drawn, never sent. */
 const ANSI = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])/g
 const CONTROLS = /[\x00-\x08\x0b-\x1f\x7f-\x9f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+/**
+ * Characters that draw as nothing: format characters (zero-width spaces and
+ * joiners, the soft hyphen, the byte-order mark), Unicode tag characters
+ * and variation selectors (but U+FE0F, which picks an emoji's colour).
+ * They would let text reach Claude that the person can't see, so they are
+ * dropped from what is drawn and what is sent alike.
+ */
+const INVISIBLE = /[\p{Cf}\u{E0000}-\u{E007F}\uFE00-\uFE0E\u{E0100}-\u{E01EF}\u180B-\u180F]/gu
+/** Line and paragraph separators, and NEL: newlines, as they would read. */
+const SEPARATORS = /[\u2028\u2029\x85]/g
 
-/** Document text as read from disk, made safe to draw: no escapes, no controls, CRLF as LF. */
-export const stripControls = (text: string) => text.replace(/\r\n?/g, '\n').replace(ANSI, '').replace(CONTROLS, '')
+/** Document text as read from disk, made safe to draw: no escapes, no controls or invisible characters, every line break a plain \n. */
+export const stripControls = (text: string) => text.replace(/\r\n?/g, '\n').replace(SEPARATORS, '\n').replace(ANSI, '').replace(CONTROLS, '').replace(INVISIBLE, '')
 
-/** One line for a label, path or sheet name: controls and newlines become spaces, capped. */
+/** One line for a label, path or sheet name: controls and newlines become spaces, invisible characters go, capped. */
 export function sanitizeLine(text: string, most = 200): string {
-  const one = text.replace(ANSI, '').replace(/[\n\u2028\u2029]/g, ' ').replace(CONTROLS, ' ')
+  const one = text.replace(ANSI, '').replace(/[\n\u2028\u2029\x85]/g, ' ').replace(CONTROLS, ' ').replace(INVISIBLE, '')
   return one.length > most ? `${one.slice(0, most - 1)}…` : one
 }
 
@@ -34,18 +44,17 @@ export function strWidth(text: string): number {
   return width
 }
 
-/** The longest start of `text` that fits `width` cells. */
+/** The longest start of `text` that fits `width` cells; it looks at no more of the text than that, so a long line costs no more than a short one. */
 export function fitStart(text: string, width: number): string {
-  if (strWidth(text) <= width) return text
   let used = 0
-  let out = ''
+  let end = 0
   for (const ch of text) {
     const w = strWidth(ch)
-    if (used + w > width) break
-    out += ch
+    if (used + w > width) return text.slice(0, end)
     used += w
+    end += ch.length
   }
-  return out
+  return text
 }
 
 /** Cuts text to `width` cells, ending with an ellipsis when something is left out. */

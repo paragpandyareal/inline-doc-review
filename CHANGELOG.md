@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.0 — 2026-10-10
+
+**Nothing to install. Every file opens straight away, because the pane now reads Word, Excel and PDF files itself.**
+
+**Why:** this change is for the people using the pane. Installing Python was the biggest barrier to getting started, especially on Windows and on work laptops where installing software is hard or not allowed. It also caused most of the problems reviewers found: a setup that could get stuck on Ubuntu, slow files reported as "no Python", Apple's developer-tools prompt popping up on a Mac, and downloads from PyPI. All of that is gone.
+
+- **Shorter prompt.** What the pane sends Claude is one header line plus, for each comment, the file and place, the quoted text and the comment. The per-format editing advice is gone. The quote is still fenced and marked as data.
+- **Easier commenting.** Clicking or dragging over lines or cells puts the keys straight in the comment box (no second click), and the box is drawn with a border so it's easy to find; Esc returns to Claude's prompt, and so does sending. Long place names are shortened so the box stays on one line. A short pane drops spacing and hints so the comment box always shows.
+- **More below, and the wheel.** Documents say "▼ N more lines below" and have a scrollbar, as sheets do, and the mouse wheel scrolls them.
+- **Reload you can see.** If the pane can't reread a changed file by itself (read halfway through a save), it keeps what it showed and lights **⟳ Changed · Reload**. The status line no longer says "/panda to open" for the file already open.
+- **A neater panda,** asleep and smaller, shown only when it fits whole.
+- **Built-in readers.** Word, Excel and PDF are read by the pane's own TypeScript readers (`hooks/docx.ts`, `xlsx.ts`, `pdf.ts`, with `zip.ts` and `xml.ts`). No Python, no packages, no `/panda setup`, no downloads. Checked against 1,155 public test files: every file the old readers opened still opens, Excel values match Excel more closely, and reading is 3–5 times faster.
+- **Files over 4 MB:** Claude Code lets a mod read at most 4 MB, so larger Word, Excel and PDF files (up to 50 MB) need Python 3 on your computer, used only to pass the file's bytes. It's optional: without it, the pane says so plainly. `/panda setup` now only checks for Python, and if it's missing can put a request in your prompt box for Claude to help (nothing happens unless you press Enter).
+- **Big files open fast.** Only the start of a large sheet or document is unpacked, so a 20 MB workbook opens in about a second. A PDF that holds more than can be read quickly shows what was read, with a note.
+- **Pictures.** Pictures in Word, PDF, Markdown and HTML files each get a **▣ Picture** row. Click it and, in kitty or Ghostty, the picture is drawn sharp under the document. Other terminals can only draw coloured blocks, which made pictures unreadable, so there the pane shows a card with an **Open in …** button that opens the file in the computer's own app (not over SSH, where it would open on the server). Pictures the pane can't draw (EMF and WMF drawings, Word charts, scanned black-and-white PDF pages, pictures on the web, Confluence pictures) say what they are and where to see them. Excel says how many charts and pictures a workbook has. PNG files open up to 4 MB (was 2 MB).
+- **Safer prompts.** The fence around quoted text has a new random name in each prompt, and now holds the file name and location too. Invisible characters are removed, line separators become new lines, and an `@` before a path becomes `＠`. **Quoted for Claude**, under the comment box, shows exactly what a comment will quote. A comment whose text changes before it's sent is marked as changed.
+- **Security.** No reading of Claude Code's settings (colours are the theme's own). Claude's tools refuse a file whose real location can't be found. The scan after a command skips links and hidden files. Another plugin can't drive `/panda` to change settings or open files outside the working folder. The `NotebookEdit` hook is gone.
+- **Easier start.** A one-time welcome message after install, an empty pane that says what to try, `/panda examples` that works without Python (the Markdown, Confluence, HTML and CSV samples; the Excel, Word and picture samples still need Python), into a new folder every time, `~` in `/panda` paths, and paths dragged in from a Mac terminal.
+- **Excel:** whole-column sums such as `=SUM(B:B)` are calculated, and very large numbers show as Excel does (`1E+100`).
+- **Directory checklist:** the sample picture is now drawn by `make_examples.py` itself (`plan-prices.png`), so no script refers to a bundled image; README images use Markdown image syntax.
+- **Upgrading from 0.8 or earlier:** the Python setup is no longer used. You can delete its folder, `~/.cache/lazy-panda-panel/venv` (on Windows, `%USERPROFILE%\.cache\lazy-panda-panel\venv`). Python itself, if you installed it, is an ordinary app you can keep or remove.
+- **Smaller fixes:** notes under the document wrap instead of being cut off; one product name in every message; the same file in different letter case is one tab on Windows; Windows long paths (`\\?\C:\…`) are understood.
+
 ## 0.8.1 — 2026-10-09
 
 **Help for people without Python, and they stay in charge.**

@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 import { mock } from 'claude-code/testing'
 import type { test } from 'claude-code/testing'
 
@@ -27,18 +29,35 @@ export const PANE = {
  */
 export function begin(
   on: On,
-  options: { mtime?: (path: string) => number; size?: number; exists?: (path: string) => boolean; isGone?: () => boolean; box?: string; realPath?: (path: string) => string } = {},
+  options: {
+    mtime?: (path: string) => number
+    size?: number
+    exists?: (path: string) => boolean
+    isGone?: () => boolean
+    box?: string
+    realPath?: (path: string) => string
+    /** Told when the pane is opened, and what the status line says. */
+    onOpen?: (args: { focus?: true; rows?: number }) => void
+    onStatus?: (text: string) => void
+    /** Environment variables by name; any other reads as a home folder. */
+    env?: Record<string, string | undefined>
+  } = {},
 ) {
   mock.store(on)
   mock.clock(on)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
-  on('env.get', () => ({ value: '/home/u' }))
-  on('config.list', () => ({ value: [] }))
+  on('env.get', (_, e) => ({ value: options.env && e.name in options.env ? options.env[e.name] : '/home/u' }))
   on('command.register', () => ({ value: undefined }))
   on('tool.register', () => ({ value: undefined }))
-  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.open', (_, e) => {
+    options.onOpen?.(e as { focus?: true; rows?: number })
+    return { value: { isPlaced: true } }
+  })
   on('ui.toast', () => ({ value: undefined }))
-  on('ui.status', () => ({ value: undefined }))
+  on('ui.status', (_, e) => {
+    options.onStatus?.(String((e as { text?: unknown }).text ?? ''))
+    return { value: undefined }
+  })
   on('prompt.read', () => ({ value: { text: options.box ?? '', cursor: 0 } }))
   on('fs.exists', (_, e) => ({ value: options.exists?.((e as { path: string }).path) ?? true }))
   on('fs.stat', (_, e) => {

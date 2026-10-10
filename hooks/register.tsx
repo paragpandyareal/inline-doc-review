@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderNode, RenderSurface } from 'claude-code'
 
-import type { Doc, DocRow, ReviewComment, ReviewSelection, View } from '../types'
+import type { Doc, DocRow, Pixels, ReviewComment, ReviewSelection, View } from '../types'
 import { adfRows, isAdf } from './adf'
 import type { FileBarProps } from './filebar'
 import { htmlRows } from './html'
@@ -31,7 +31,12 @@ import {
   wrapRows,
 } from './model'
 import { pandaRows } from './panda'
-import { BADGES, paletteFor } from './palette'
+import { decodePicture, fitCells, toRgba } from './picture'
+import { TooSlow, startReading, stopReading } from './deadline'
+import { readDocx } from './docx'
+import { readPdf } from './pdf'
+import { readXlsx } from './xlsx'
+import { BADGES, PALETTE } from './palette'
 import type { Palette } from './palette'
 import type { SpinnerProps } from './spinner'
 import type { GridRow, LineRow, ViewerPost, ViewerProps } from './viewer'
@@ -46,14 +51,39 @@ const SOURCE_KINDS = ['md', 'markdown', 'html', 'htm', 'adf', 'json']
 /** What auto-open considers a finished output worth opening. */
 const AUTO_KINDS = ['docx', 'pdf', 'png', 'html', 'htm', 'md', 'markdown', 'adf']
 const AUTO_MAX_FILES = 5
+/** The text samples the plugin ships, written by /panda examples. */
+const EXAMPLE_TEXTS = ['launch-plan.md', 'project-update.adf', 'pricing-page.html', 'meter-readings.csv']
 /** Comments listed under the document before the rest are counted. */
 const MAX_LISTED = 12
 const MAX_FILES = 30
-/** Text files: formatted up to 2 MB, plain lines up to 10 MB, refused beyond; at most 20,000 rows. */
+/** Text files: formatted up to 2 MB, plain lines up to 4 MB (all Claude Code reads for a mod), refused beyond; at most 20,000 rows. */
 const FORMAT_MAX_BYTES = 2_000_000
-const TEXT_MAX_BYTES = 10_000_000
+const TEXT_MAX_BYTES = 4 * 1024 * 1024
 const MAX_ROWS = 20_000
-const IMAGE_MAX_BYTES = 2_000_000
+const MAX_LINE = 20_000
+/** Word, Excel and PDF files larger than this are refused. */
+const OFFICE_MAX_BYTES = 50 * 1024 * 1024
+
+/** A reader's rows made safe to draw, with Word tables laid out. */
+function cleanLines<T extends { rows: (DocRow & { cells?: string[]; isHeader?: boolean })[] }>(doc: T): T {
+  const rows = doc.rows.map(row => ({ ...row, text: stripControls(row.text), ...(row.spans ? { spans: row.spans.map(sp => ({ ...sp, t: stripControls(sp.t) })) } : {}) }))
+  return { ...doc, rows: layoutTables(rows) }
+}
+
+/**
+ * Rows made safe once more after a reader: HTML entities and ADF's JSON
+ * escapes are decoded after the file was cleaned, and can bring controls back.
+ */
+const cleanRows = (rows: DocRow[]): DocRow[] =>
+  rows.map(row => ({ ...row, text: stripControls(row.text), ...(row.spans ? { spans: row.spans.map(sp => ({ ...sp, t: stripControls(sp.t) })) } : {}) }))
+
+/** A file's bytes from the base64 $.fs.read gives. */
+function bytesOf(base64: string): Uint8Array {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let k = 0; k < binary.length; k += 1) bytes[k] = binary.charCodeAt(k)
+  return bytes
+}
 const SCAN_SKIP = new Set(['node_modules', '.git', '.venv', 'venv', 'dist', 'build', '__pycache__', '.next', '.cache'])
 
 const files = atom({ plugin: 'lazy-panda-panel', key: 'files' } as const, [])
@@ -66,7 +96,7 @@ const changed = atom({ plugin: 'lazy-panda-panel', key: 'changed' } as const, nu
 
 const extOf = (path: string) => (path.match(/\.([^./]+)$/)?.[1] ?? '').toLowerCase()
 const isSupported = (path: string) => [...TEXT_KINDS, ...DOC_KINDS, 'png'].includes(extOf(path))
-const baseName = (path: string) => path.split('/').pop() ?? path
+const baseName = (path: string) => sanitizeLine(path.split('/').pop() ?? path, 120)
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
 /** A tool's answer: a live session takes the text, the test kit the result. */
@@ -82,14 +112,22 @@ const session = {
   /** The working folder with links resolved: the model's tools open files under it. */
   realFolder: '',
   /** The command that runs the Python helper here, once one has worked (Windows has `py` and `python`, not `python3`). */
-  python: null as 'python3' | 'py' | 'python' | null,
-  theme: 'dark',
+  python: null as 'python3' | 'py' | 'python' | 'none' | null,
   /** Supported files written this turn, for auto-open; and this session, which the tools may open wherever they are. */
   turnFiles: new Set<string>(),
   claudeWrote: new Set<string>(),
   /** The main agent's running turn, and comment sends waiting for a turn to finish (`skipTurn`: not that one, it was already running). */
   turn: null as string | null,
   batches: [] as { id: string; skipTurn?: string }[],
+  isRefreshing: false,
+  /** The terminal draws real pictures (kitty, Ghostty); elsewhere a picture is a card, never a blur of coloured blocks. */
+  isSharp: false,
+  /** How many times the pane has switched to another file: part of the comment box's key. */
+  switches: 0,
+  /** Files changed on disk that the pane couldn't reread yet: their Reload is lit until it does. */
+  stale: new Set<string>(),
+  /** How to open a file in the computer's own app; null over SSH or with no desktop. */
+  opener: null as 'open' | 'xdg-open' | 'explorer' | null,
 }
 
 /**
@@ -102,6 +140,96 @@ let intended: string | null = null
 /** Each open file's modification time when the pane last read it. */
 const seen = new Map<string, number>()
 
+/** Pictures decoded for the preview, by file, version and picture: a few are kept. */
+const pictureCache = new Map<string, Pixels | string>()
+
+/** The picture a selection is exactly on, decoded (or why it can't be): null when the selection isn't one picture. */
+async function selectedPicture($: EngineInterface, d: Doc | undefined, sel: ReviewSelection | null, version: number, isRaw: boolean): Promise<Shown | null> {
+  if (!d || !sel || sel.path !== d.path) return null
+  let key: string
+  let label = ''
+  let index = 0
+  let load: () => Promise<Pixels | string> | Pixels | string
+  if (d.kind === 'image') {
+    key = `${d.path}|${version}|file`
+    load = () => decodePicture(bytesOf(d.png))
+  } else if (d.kind === 'lines' && !isRaw && sel.from === sel.to && (sel.raw === true) === isRaw) {
+    const row = d.rows[sel.from]
+    const pic = row?.pic
+    if (pic === undefined || !row) return null
+    key = `${d.path}|${version}|${pic}`
+    index = pic
+    if (row.src !== undefined) {
+      const src = row.src
+      load = () => linkedPicture($, d.path, src)
+    } else {
+      const picture = d.pictures?.[pic]
+      if (!picture) return null
+      label = picture.label
+      load = picture.load
+    }
+  } else return null
+  if (!session.isSharp) return { index, label, result: null }
+  let result = pictureCache.get(key)
+  if (result === undefined) {
+    // Remembered before decoding: if this draw runs out of time, the next one doesn't start again.
+    pictureCache.set(key, 'it takes too long to draw here')
+    startReading(3000)
+    try {
+      result = await load()
+    } catch (error) {
+      result = error instanceof TooSlow ? 'it takes too long to draw here' : error instanceof Error ? sanitizeLine(error.message, 200) : 'the picture is damaged'
+    } finally {
+      stopReading()
+    }
+    pictureCache.set(key, result)
+    for (const old of pictureCache.keys()) if (pictureCache.size > 12 && old !== key) pictureCache.delete(old)
+  }
+  return { index, label, result }
+}
+
+/**
+ * A picture a Markdown or HTML file shows: a file beside it (read, never
+ * sent anywhere) or a data: address. Nothing is ever downloaded.
+ */
+async function linkedPicture($: EngineInterface, docPath: string, src: string): Promise<Pixels | string> {
+  const data = /^data:image\/[\w.+-]+;base64,(.*)$/is.exec(src.trim())
+  if (data) {
+    try {
+      return decodePicture(bytesOf((data[1] ?? '').replace(/\s+/g, '')))
+    } catch {
+      return 'the picture written into the file is damaged'
+    }
+  }
+  if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(src)) return 'it is on the web, and the pane never downloads anything'
+  let name = src.replace(/[?#].*$/, '')
+  try {
+    name = decodeURIComponent(name)
+  } catch {
+    /* kept as written */
+  }
+  if (!/\.(png|jpe?g|gif)$/i.test(name)) return `it is ${/\.svg$/i.test(name) ? 'an SVG drawing' : 'in a format'}, which the pane can’t draw`
+  const folder = docPath.slice(0, docPath.lastIndexOf('/'))
+  const path = normalizePath(isAbsolutePath(name) ? name : `${folder}/${name}`)
+  let st
+  try {
+    st = await $.fs.stat(path, { resolve: true })
+  } catch {
+    return `there is no picture file at ${sanitizeLine(path, 200)}`
+  }
+  // Only an ordinary file, really (links followed) in the document's folder or the working folder, and not in a hidden folder.
+  const real = st.realPath === undefined ? undefined : sameCase(normalizePath(st.realPath))
+  const roots = [folder, session.realFolder].map(root => sameCase(normalizePath(root))).filter(root => !/^(?:[a-z]:)?\/?$/.test(root))
+  const inside = real !== undefined && roots.some(root => real.startsWith(`${root}/`) && !real.slice(root.length + 1).split('/').some(part => part.startsWith('.')))
+  if (st.kind !== 'file' || !inside) return 'the picture file is outside the document’s folder, so the pane doesn’t open it'
+  if (st.size > READ_MAX_BYTES) return 'the picture file is over 4 MB, too large to preview here'
+  try {
+    return decodePicture(bytesOf((await $.fs.read(path, { as: 'bytes' })).base64))
+  } catch {
+    return `the picture file at ${sanitizeLine(path, 200)} can’t be read`
+  }
+}
+
 /** What a surface last drew, for scrolling maths. */
 type Drawn = { total: number; firstVisual: number[]; height: number; shownCols: number }
 const drawnBy = new Map<RenderSurface, Drawn>()
@@ -109,35 +237,36 @@ const drawnOn = (surface: RenderSurface): Drawn => drawnBy.get(surface) ?? { tot
 
 // ── Reading files ──
 
-type Ran = Awaited<ReturnType<EngineInterface['process']['run']>>
+/** Claude Code reads files of up to 4 MiB for a mod; larger Word, Excel and PDF files come through Python. */
+const READ_MAX_BYTES = 4 * 1024 * 1024
 
-/** What to say when no command here runs Python 3. */
-const NO_PYTHON = 'Word, Excel and PDF files need Python, which isn’t on this computer yet. Run /panda setup and Claude can help you install it.'
+type Python = 'python3' | 'py' | 'python'
+
+const kindName = (ext: string) => (ext === 'xlsx' ? 'workbook' : ext === 'docx' ? 'Word document' : 'PDF')
+const appName = (ext: string) => (ext === 'xlsx' ? 'Excel' : ext === 'docx' ? 'Word' : 'your PDF reader')
+const megabytes = (size: number) => `${(size / (1024 * 1024)).toFixed(1)} MB`
+
+/** What the pane says about a document over 4 MB when there is no Python here. */
+const bigFileNote = (size: number, ext: string) =>
+  `This ${kindName(ext)} is ${megabytes(size)}. The pane opens Word, Excel and PDF files up to 4 MB by itself; ` +
+  'larger ones need Python 3 on this computer (nothing else to install). Run /panda setup to check, and Claude can help you install it. ' +
+  `You can also ask Claude about the file, or open it in ${appName(ext)}.`
 
 /**
- * The request /panda setup puts in the prompt box when there's no Python. The
- * mod installs nothing: the person reads this, and only if they press Enter
- * does Claude help, asking before it installs anything.
+ * The request /panda setup puts in the prompt box when there's no Python.
+ * The mod installs nothing: the person reads this, and only if they press
+ * Enter does Claude help, asking before it installs anything.
  */
 const INSTALL_PYTHON_REQUEST = [
-  'Please help me install Python 3 so the Lazy Panda Panel can show Word, Excel and PDF files. I’m not technical, so walk me through it one step at a time, in plain language.',
+  'Please help me install Python 3, so the Lazy Panda Panel can open Word, Excel and PDF files over 4 MB. I’m not technical, so go one step at a time, in plain language.',
   '',
-  '- First work out which operating system this is. Then tell me what you’d install, where it comes from and roughly how big it is, and ask me before installing anything. If I say no, stop.',
-  '- Use the official Python from python.org, or this system’s usual installer for it: winget on Windows, Homebrew or the python.org installer on a Mac, and the python3 and python3-venv packages on Linux. On Windows, the python3 command may only be a link to the Microsoft Store; don’t rely on it.',
-  '- Make sure the python3, py or python command will work for new programs. Don’t change anything else on my computer.',
-  '- When it’s done, tell me to restart Claude Code (type /exit, then start it again the same way as before) and then run /panda setup. That installs the pane’s three small Python libraries.',
+  '- First check which computer this is (Windows, Mac or Linux) and whether Python 3 is already installed but not found (on Windows, try “py --version”). If it is, help me with that instead of installing a second copy.',
+  '- Before installing anything, tell me what you’d install, where it comes from and roughly how big it is, and wait for my yes. If I say no, stop.',
+  '- Use only official sources. Windows: winget (with --accept-package-agreements --accept-source-agreements) or the python.org installer; there, “python3” may only be a link to the Microsoft Store, so don’t rely on it. Mac: the installer from python.org, opened so I can click through it (Homebrew only if I already have it). Linux: the system’s python3 package.',
+  '- If a step needs my password (sudo or an administrator prompt), don’t run it yourself: give me the exact command and tell me to paste it into a separate terminal window.',
+  '- Don’t install any Python packages and don’t change anything else on my computer: the panel needs Python 3 only.',
+  '- When it’s done, check that it works, then tell me how to restart. On Windows: close this terminal window completely, open a new one, and start Claude Code again. On a Mac or Linux: type /exit and start Claude Code again. Then I run /panda setup to check.',
 ].join('\n')
-
-/** What /panda setup puts in the prompt box when it failed: the error, for Claude to explain. */
-const setupFailedRequest = (error: string) =>
-  [
-    'The Lazy Panda Panel’s /panda setup failed with the error below. I’m not technical: please explain in plain language what went wrong, and walk me through fixing it one step at a time. Ask me before you install or change anything.',
-    '',
-    '<setup-error>',
-    // Control characters out, and the fence can't be closed from inside, as with document excerpts.
-    ...stripControls(error).replace(/<\/?setup-error/gi, '‹setup-error').split('\n').map(line => `> ${line}`),
-    '</setup-error>',
-  ].join('\n')
 
 /** Puts a request in the prompt box, after anything already typed. It is never sent: the person decides. */
 async function offerRequest($: EngineInterface, text: string): Promise<boolean> {
@@ -147,42 +276,148 @@ async function offerRequest($: EngineInterface, text: string): Promise<boolean> 
 }
 
 /**
- * Runs the bundled helper, `scripts/extract.py`, in the plugin's folder, with
- * `input` on standard input: what to do on the first line, then its path.
- * Each command is fixed text. Windows has `py` and `python` rather than
- * `python3`, which there may be only the Microsoft Store's placeholder, so
- * each is tried in turn until one is Python 3. Null when none is.
+ * Starts one of the two bundled scripts with one of the Python commands, in
+ * the plugin's folder, with `input` on standard input. Every command is
+ * written out as fixed text; nothing from a document or a path is ever part of one.
  */
-async function runHelper($: EngineInterface, input: string, timeoutMs: number): Promise<Ran | null> {
-  const attempt = async (python: 'python3' | 'py' | 'python'): Promise<Ran | null> => {
-    let ran: Ran
-    try {
-      if (python === 'python3') ran = await $.process.run(['python3', './scripts/extract.py'], { cwd: $.plugin.root, stdin: input, timeoutMs })
-      else if (python === 'py') ran = await $.process.run(['py', '-3', './scripts/extract.py'], { cwd: $.plugin.root, stdin: input, timeoutMs })
-      else ran = await $.process.run(['python', './scripts/extract.py'], { cwd: $.plugin.root, stdin: input, timeoutMs })
-    } catch {
-      return null
-    }
-    // The helper always prints something, or fails with a Python traceback; anything else is not Python 3 (9009 is the Store placeholder).
-    const isPython3 = ran.exitCode !== 9009 && (ran.exitCode === 0 || ran.stdout.trim() !== '' || ran.stderr.includes('Traceback'))
-    if (isPython3) session.python = python
-    return isPython3 ? ran : null
+function startScript($: EngineInterface, python: Python, script: 'read' | 'examples', input: string) {
+  if (script === 'read') {
+    if (python === 'python3') return $.process.spawn({ argv: ['python3', '-I', './scripts/read_file.py'], cwd: $.plugin.root, input })
+    if (python === 'py') return $.process.spawn({ argv: ['py', '-3', '-I', './scripts/read_file.py'], cwd: $.plugin.root, input })
+    return $.process.spawn({ argv: ['python', '-I', './scripts/read_file.py'], cwd: $.plugin.root, input })
   }
-  if (session.python) return attempt(session.python)
-  return (await attempt('python3')) ?? (await attempt('py')) ?? (await attempt('python'))
+  if (python === 'python3') return $.process.spawn({ argv: ['python3', '-I', './scripts/make_examples.py'], cwd: $.plugin.root, input })
+  if (python === 'py') return $.process.spawn({ argv: ['py', '-3', '-I', './scripts/make_examples.py'], cwd: $.plugin.root, input })
+  return $.process.spawn({ argv: ['python', '-I', './scripts/make_examples.py'], cwd: $.plugin.root, input })
+}
+
+/** A script's standard output, or 'timeout', or null when it could not start or wrote too much. */
+async function collect($: EngineInterface, stream: ReturnType<typeof startScript>, timeoutMs: number): Promise<string | null | 'timeout'> {
+  const parts: string[] = []
+  let size = 0
+  const iterator = stream[Symbol.asyncIterator]()
+  const stop = new AbortController()
+  const timer = $.clock.sleep(timeoutMs, { signal: stop.signal }).then(
+    () => 'timeout' as const,
+    () => 'stopped' as const,
+  )
+  try {
+    for (;;) {
+      const step = await Promise.race([iterator.next(), timer])
+      if (step === 'timeout') {
+        await iterator.return?.(undefined as never)
+        return 'timeout'
+      }
+      if (step === 'stopped' || step.done) break
+      if (step.value.stream !== 'stdout') continue
+      size += step.value.text.length
+      // 50 MB as base64, and a little over.
+      if (size > 70 * 1024 * 1024) {
+        await iterator.return?.(undefined as never)
+        return null
+      }
+      parts.push(step.value.text)
+    }
+  } catch {
+    return null
+  } finally {
+    stop.abort()
+  }
+  return parts.join('')
+}
+
+/**
+ * Runs a bundled script with Python 3: python3, then py -3 (the Windows
+ * launcher), then python, until one answers (Windows' own python3 may be only
+ * a Microsoft Store link). The one that worked is remembered for the session;
+ * so is finding none, so a Mac without Python is not asked again (/panda
+ * setup asks again).
+ */
+async function runPython($: EngineInterface, script: 'read' | 'examples', input: string, timeoutMs: number): Promise<string | 'none' | 'timeout'> {
+  if (session.python === 'none') return 'none'
+  // On a Mac without Python, running python3 pops up Apple's offer to install its developer tools: it is run only when a real Python is there.
+  if (session.python === null && (await isMacWithoutPython($))) {
+    session.python = 'none'
+    return 'none'
+  }
+  const order: Python[] = session.python ? [session.python] : ['python3', 'py', 'python']
+  for (const python of order) {
+    const out = await collect($, startScript($, python, script, input), timeoutMs)
+    if (out === 'timeout') return 'timeout'
+    if (out !== null && out.startsWith('LPP1')) {
+      session.python = python
+      return out
+    }
+  }
+  session.python = 'none'
+  return 'none'
+}
+
+/** Where a Mac keeps a real Python 3: Apple's developer tools or Xcode, python.org's installer, Homebrew, MacPorts. */
+const MAC_PYTHONS = [
+  '/Library/Developer/CommandLineTools/usr/bin/python3',
+  '/Applications/Xcode.app/Contents/Developer/usr/bin/python3',
+  '/Library/Frameworks/Python.framework/Versions/Current/bin/python3',
+  '/usr/local/bin/python3',
+  '/opt/homebrew/bin/python3',
+  '/opt/local/bin/python3',
+]
+
+/** A Mac where /usr/bin/python3 can only be Apple's stub: none of the usual Pythons is installed. */
+async function isMacWithoutPython($: EngineInterface): Promise<boolean> {
+  if (!(await $.fs.exists('/System/Library/CoreServices/SystemVersion.plist'))) return false
+  const home = homeOf(session.folder)
+  const own = home ? [`${home}/.pyenv/shims/python3`, `${home}/miniconda3/bin/python3`, `${home}/anaconda3/bin/python3`, `${home}/.local/bin/python3`] : []
+  for (const path of [...MAC_PYTHONS, '/opt/anaconda3/bin/python3', '/opt/miniconda3/bin/python3', ...own]) if (await $.fs.exists(path)) return false
+  return true
+}
+
+/** The command that opens a file in its usual app here: none over SSH (it would open on the server) or on a Linux without a desktop. */
+async function openerHere($: EngineInterface): Promise<typeof session.opener> {
+  if ((await $.env.get('SSH_CONNECTION')) || (await $.env.get('SSH_TTY'))) return null
+  if (/^[a-z]:\//i.test(session.folder) || session.folder.startsWith('//')) return 'explorer'
+  if (await $.fs.exists('/System/Library/CoreServices/SystemVersion.plist')) return 'open'
+  return (await $.env.get('DISPLAY')) || (await $.env.get('WAYLAND_DISPLAY')) ? 'xdg-open' : null
+}
+
+/** Opens a file in the computer's own app (Preview, Photos, Word…), as double-clicking it would. */
+async function openOutside($: EngineInterface, path: string) {
+  $.ui.toast(`Opening ${baseName(path)}…`)
+  try {
+    if (session.opener === 'open') await $.process.run(['open', path], { timeoutMs: 10_000 })
+    else if (session.opener === 'xdg-open') await $.process.run(['xdg-open', path], { timeoutMs: 10_000 })
+    else if (session.opener === 'explorer') await $.process.run(['explorer.exe', path.replace(/\//g, '\\')], { timeoutMs: 10_000 })
+  } catch {
+    $.ui.toast(`Couldn’t open ${baseName(path)}. Open it from your files instead.`)
+  }
+}
+
+/** A Word, Excel or PDF file's bytes: read directly up to 4 MB, through Python beyond. */
+async function officeBytes($: EngineInterface, path: string, size: number, ext: string): Promise<Uint8Array | Extract<Doc, { kind: 'error' }>> {
+  if (size <= READ_MAX_BYTES) return bytesOf((await $.fs.read(path, { as: 'bytes' })).base64)
+  const out = await runPython($, 'read', path, 30_000)
+  if (out === 'none') return { kind: 'error', path, message: bigFileNote(size, ext), isNotice: true }
+  if (out === 'timeout') return { kind: 'error', path, message: `Reading this ${megabytes(size)} file took too long. Try again, or open it in ${appName(ext)}.` }
+  const newline = out.indexOf('\n')
+  const head = newline < 0 ? out : out.slice(0, newline)
+  if (head.startsWith('LPP1 error')) return { kind: 'error', path, message: sanitizeLine(head.slice(11), 300) }
+  return bytesOf(out.slice(newline + 1).replace(/\s+/g, ''))
 }
 
 async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise<Doc> {
   const ext = extOf(path)
   let size: number
   try {
-    size = (await $.fs.stat(path)).size
+    const st = await $.fs.stat(path)
+    // A device or a pipe named like a document is never read: reading one could wait forever.
+    if (st.kind !== 'file') return { kind: 'error', path, message: 'This isn’t an ordinary file, so the pane doesn’t open it.' }
+    size = st.size
   } catch {
     return { kind: 'error', path, message: 'This file was deleted or moved.' }
   }
   try {
     if (ext === 'png') {
-      if (size > IMAGE_MAX_BYTES) return { kind: 'error', path, message: 'This image is over 2 MB, too large to preview here.' }
+      if (size > READ_MAX_BYTES) return { kind: 'error', path, message: `This picture is ${megabytes(size)}, more than the 4 MB Claude Code lets a mod read. Open it in an image viewer to see it.` }
       const { base64 } = await $.fs.read(path, { as: 'bytes' })
       // The PNG header: width and height are the big-endian words at bytes 16 and 20.
       const head = atob(base64.slice(0, 32))
@@ -190,32 +425,29 @@ async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise
       return { kind: 'image', path, png: base64, width: word(16) || 1, height: word(20) || 1 }
     }
     if (DOC_KINDS.includes(ext)) {
-      const ran = await runHelper($, `${ext}\n${path}`, 60_000)
-      if (!ran) return { kind: 'error', path, message: NO_PYTHON }
-      if (ran.exitCode !== 0) return { kind: 'error', path, message: sanitizeLine((ran.stderr || ran.stdout).trim().split('\n').slice(-3).join(' '), 600) }
-      const parsed = JSON.parse(ran.stdout) as Doc
-      // The helper cleans what it reads; this pass makes sure, since a cell or row can hold anything.
-      if (parsed.kind === 'lines') {
-        const rows = parsed.rows.map(row => ({ ...row, text: stripControls(row.text), ...(row.spans ? { spans: row.spans.map(sp => ({ ...sp, t: stripControls(sp.t) })) } : {}) }))
-        return { ...parsed, rows: layoutTables(rows), path }
+      if (size > OFFICE_MAX_BYTES) return { kind: 'error', path, message: `This ${kindName(ext)} is ${megabytes(size)}; the pane shows files up to 50 MB. Open it in ${appName(ext)}.` }
+      const bytes = await officeBytes($, path, size, ext)
+      if (!(bytes instanceof Uint8Array)) return bytes
+      // Reading has a time limit well inside a hook's own: a file that would take longer shows what was read, or says so.
+      startReading(4000)
+      try {
+        if (ext === 'xlsx') return { ...readXlsx(bytes), path }
+        if (ext === 'docx') return { ...cleanLines(readDocx(bytes)), path }
+        const pdf = await readPdf(bytes)
+        return pdf.kind === 'error' ? { ...pdf, path } : { ...cleanLines(pdf), path }
+      } catch (error) {
+        if (error instanceof TooSlow) return { kind: 'error', path, message: `This ${kindName(ext)} takes too long to read here. Open it in ${appName(ext)}, or ask Claude about it.` }
+        return { kind: 'error', path, message: `Could not read the file: ${sanitizeLine(error instanceof Error ? error.message : String(error), 300)}.` }
+      } finally {
+        stopReading()
       }
-      if (parsed.kind === 'grid') {
-        const cell = (text: string) => stripControls(text).replace(/\n/g, '⏎').replace(/\t/g, ' ')
-        const sheets = parsed.sheets.map(sheet => ({
-          ...sheet,
-          name: sanitizeLine(sheet.name, 100),
-          rows: sheet.rows.map(row => row.map(c => ({ ...c, v: cell(c.v), ...(c.f !== undefined ? { f: cell(c.f) } : {}) }))),
-        }))
-        return { ...parsed, sheets, path }
-      }
-      return { ...parsed, path }
     }
-    if (size > TEXT_MAX_BYTES) return { kind: 'error', path, message: `This file is ${Math.round(size / 1e6)} MB; the pane shows text files up to 10 MB.` }
+    if (size > TEXT_MAX_BYTES) return { kind: 'error', path, message: `This file is ${megabytes(size)}; the pane shows text files up to 4 MB.` }
     const text = stripControls(await $.fs.read(path))
     const isBig = size > FORMAT_MAX_BYTES
     if (!isRaw && !isBig) {
-      if (ext === 'md' || ext === 'markdown') return capRows({ kind: 'lines', path, rows: markdownRows(text), isFormatted: true, hasSource: true })
-      if (ext === 'html' || ext === 'htm') return capRows({ kind: 'lines', path, rows: htmlRows(text), isFormatted: true, hasSource: true })
+      if (ext === 'md' || ext === 'markdown') return capRows({ kind: 'lines', path, rows: cleanRows(markdownRows(text)), isFormatted: true, hasSource: true })
+      if (ext === 'html' || ext === 'htm') return capRows({ kind: 'lines', path, rows: cleanRows(htmlRows(text)), isFormatted: true, hasSource: true })
       // Confluence/Jira pages as ADF: .adf files, or .json files holding a doc node.
       if (ext === 'adf' || ext === 'json') {
         let parsed: unknown
@@ -224,15 +456,23 @@ async function loadDoc($: EngineInterface, path: string, isRaw = false): Promise
         } catch {
           parsed = undefined
         }
-        if (isAdf(parsed)) return capRows({ kind: 'lines', path, rows: adfRows(parsed), isFormatted: true, hasSource: true })
+        if (isAdf(parsed)) return capRows({ kind: 'lines', path, rows: cleanRows(adfRows(parsed)), isFormatted: true, hasSource: true })
         if (ext === 'adf') return { kind: 'error', path, message: 'This .adf file is not an ADF document (expected {"type": "doc", "content": [...]}).' }
       }
     }
-    const rows: DocRow[] = text.split('\n').map((line, i) => ({ text: line.replace(/\t/g, '  '), anchor: `line ${i + 1}`, unit: 'line' }))
+    // A line longer than anyone reads in a pane (minified JSON, one huge CSV row) is cut, and the note says so.
+    let isLong = false
+    const rows: DocRow[] = text.split('\n').map((line, i) => {
+      const flat = line.replace(/\t/g, '  ')
+      if (flat.length <= MAX_LINE) return { text: flat, anchor: `line ${i + 1}`, unit: 'line' }
+      isLong = true
+      return { text: `${flat.slice(0, MAX_LINE)}…`, anchor: `line ${i + 1}`, unit: 'line' }
+    })
     if (rows.length > 1 && rows[rows.length - 1]?.text === '') rows.pop()
     const hasSource = !isBig && SOURCE_KINDS.includes(ext) && (ext !== 'json' || isRaw)
     const doc: LinesDoc = { kind: 'lines', path, rows, ...(hasSource ? { hasSource } : {}) }
     if (isBig) doc.note = 'This file is over 2 MB, so it is shown as plain text.'
+    if (isLong) doc.note = `${doc.note ? `${doc.note} ` : ''}Lines over ${MAX_LINE.toLocaleString('en')} characters are cut short.`
     return capRows(doc)
   } catch (error) {
     return { kind: 'error', path, message: `Could not open the file: ${sanitizeLine(String(error), 600)}` }
@@ -266,11 +506,17 @@ async function hold($: EngineInterface, path: string, d: Doc, isRaw: boolean) {
   }
 }
 
+/** The spelling of `path` already in the list, if Windows would call them the same file (case aside). */
+async function listed($: EngineInterface, path: string): Promise<string> {
+  const key = sameCase(path)
+  return (await read($, files)).find(one => sameCase(one) === key) ?? path
+}
+
 /** Puts a file in the list; the shown file is never the one dropped. */
 async function addFile($: EngineInterface, path: string) {
   const shown = (await read($, open)).path
   await update($, files, list => {
-    if (list.includes(path)) return list
+    if (list.some(one => sameCase(one) === sameCase(path))) return list
     const next = [...list, path]
     while (next.length > MAX_FILES) {
       const drop = next.findIndex(one => one !== shown && one !== path)
@@ -281,9 +527,10 @@ async function addFile($: EngineInterface, path: string) {
 }
 
 /** Rereads a file that changed: when it is the one shown, marks what changed. */
-async function track($: EngineInterface, path: string) {
+async function track($: EngineInterface, path: string, isAuto = false) {
   await addFile($, path)
-  seen.set(path, await mtimeOf($, path))
+  const mtime = await mtimeOf($, path)
+  seen.set(path, mtime)
   if ((await read($, open)).path !== path) {
     docs.delete(path)
     return
@@ -292,6 +539,12 @@ async function track($: EngineInterface, path: string) {
   const isRaw = (await read($, view)).raw === true
   const fresh = await loadDoc($, path, isRaw)
   if ((await read($, open)).path !== path) return
+  // A file (still there) read halfway through a save looks broken: by itself, the pane keeps what it showed and lights Reload; Reload shows what is there.
+  if (isAuto && mtime > 0 && fresh.kind === 'error' && before && before.kind !== 'error') {
+    await markStale($, path, true)
+    return
+  }
+  if (session.stale.delete(path)) await update($, open, old => ({ ...old, version: old.version + 1 }))
   await hold($, path, fresh, isRaw)
   await update($, open, old => ({ ...old, version: old.version + 1 }))
   const diff = diffDocs(before, fresh)
@@ -304,7 +557,10 @@ async function resetView($: EngineInterface, sel: ReviewSelection | null, raw = 
   await update($, selection, () => sel)
 }
 
-async function show($: EngineInterface, path: string) {
+async function show($: EngineInterface, wanted: string) {
+  const path = await listed($, wanted)
+  const shownBefore = (await read($, open)).path
+  if (shownBefore !== null && shownBefore !== path) session.switches += 1
   intended = path
   await addFile($, path)
   const loaded = await loadDoc($, path)
@@ -329,24 +585,38 @@ async function toggleSource($: EngineInterface) {
 }
 
 async function openPane($: EngineInterface) {
-  return $.ui.open({ id: PANE, title: TITLE })
+  // Tall enough for a page of the document and the comment box together; the person's own size wins.
+  return $.ui.open({ id: PANE, title: TITLE, rows: 30 })
 }
 
 // ── Paths and watching ──
 
-/** A root (`/`, `C:/`) or a home folder (/home/<name>, /Users/<name>, /root, C:/Users/<name>): too broad to scan. */
-const isHomeOrRoot = (dir: string) => /^(?:[A-Z]:)?\/?$|^(?:[A-Z]:)?\/(?:home|Users)\/[^/]+\/?$|^\/root\/?$/i.test(dir)
+/**
+ * A root (`/`, `C:/`, a network share), a home folder or the folder of them
+ * (/home/<name>, /Users/<name>, /var/home/<name>, WSL's /mnt/c/Users/<name>,
+ * /root, /var/root, C:/Users/<name>): too broad to scan.
+ */
+const isHomeOrRoot = (dir: string) =>
+  /^(?:[A-Z]:)?\/?$|^\/\/[^/]+(?:\/[^/]+)?\/?$|^(?:[A-Z]:|\/mnt\/[a-z]|\/var)?\/(?:home|Users)(?:\/[^/]+)?\/?$|^\/(?:var\/)?root\/?$/i.test(dir)
 
 const resolvePath = (path: string) => normalizePath(isAbsolutePath(path) ? path : `${session.folder}/${path}`)
 
 /** Windows paths compare without case, as Windows does. */
 const sameCase = (path: string) => (/^[A-Z]:\//.test(path) ? path.toLowerCase() : path)
 
-/** What a person types after /panda: surrounding quotes stripped. */
+/** The home folder, when the working folder is inside one (/home/<name>, /Users/<name>, C:/Users/<name>): for ~ in a typed path. */
+const homeOf = (folder: string) => /^(?:[A-Z]:)?\/(?:home|Users)\/[^/]+|^\/root/i.exec(folder)?.[0]
+
+/** What a person types after /panda: surrounding quotes stripped, ~ as their home folder. */
 function typedPath(text: string): string {
-  const bare = text.trim().replace(/^(['"])(.*)\1$/, '$2')
+  let bare = text.trim().replace(/^(['"])(.*)\1$/, '$2')
+  const home = homeOf(session.folder)
+  if (home && /^~(?:[\\/]|$)/.test(bare)) bare = home + bare.slice(1)
   return resolvePath(bare)
 }
+
+/** A path as a Mac terminal writes it when a file is dragged in (`My\ Notes.md`), its backslashes undone; null when there are none. */
+const unescaped = (text: string) => (/\\[ ()[\]'"&;!$#,]/.test(text) && !/^\s*(?:[A-Za-z]:|\\\\)/.test(text) ? text.replace(/\\(.)/g, '$1') : null)
 
 /**
  * Whether the model's tools may open a path: a file under the working folder
@@ -359,7 +629,10 @@ async function isAllowed($: EngineInterface, path: string): Promise<boolean> {
   if (/^(?:[a-z]:)?\/?$/.test(root)) return false
   let real: string
   try {
-    real = sameCase(normalizePath((await $.fs.stat(path, { resolve: true })).realPath ?? path))
+    // Where the path really leads, links followed; unknown, it is refused.
+    const resolved = (await $.fs.stat(path, { resolve: true })).realPath
+    if (resolved === undefined) return false
+    real = sameCase(normalizePath(resolved))
   } catch {
     return false
   }
@@ -367,11 +640,16 @@ async function isAllowed($: EngineInterface, path: string): Promise<boolean> {
   return !real.slice(root.length + 1).split('/').some(part => part.startsWith('.'))
 }
 
-async function noteFile($: EngineInterface, path: string | undefined) {
+/**
+ * Notes a file Claude made this turn, for auto-open, and rereads it if open.
+ * `isWritten`: Claude's own Write or Edit named it, so its tools may open it
+ * wherever it is; a file a scan found after a command must pass the usual check.
+ */
+async function noteFile($: EngineInterface, path: string | undefined, isWritten: boolean) {
   if (!path || !isSupported(path)) return
-  const absolute = resolvePath(path)
+  const absolute = await listed($, resolvePath(path))
   session.turnFiles.add(absolute)
-  session.claudeWrote.add(absolute)
+  if (isWritten) session.claudeWrote.add(absolute)
   await track($, absolute)
 }
 
@@ -386,7 +664,9 @@ async function scan($: EngineInterface, dir: string, since: number, depth: numbe
   budget.left -= entries.length
   for (const entry of entries) {
     const path = `${dir.replace(/\/$/, '')}/${entry.name}`
-    if (entry.kind === 'dir' && !entry.name.startsWith('.') && !SCAN_SKIP.has(entry.name)) {
+    // Links and hidden files and folders are left alone: the scan stays in the working folder.
+    if (entry.isLink || entry.name.startsWith('.')) continue
+    if (entry.kind === 'dir' && !SCAN_SKIP.has(entry.name)) {
       await scan($, path, since, depth - 1, found, budget)
     } else if (entry.kind === 'file' && entry.mtimeMs >= since && isSupported(entry.name)) {
       found.push(path)
@@ -414,11 +694,25 @@ async function refreshChanged($: EngineInterface): Promise<string[]> {
     const before = seen.get(path)
     if (before === undefined) seen.set(path, now)
     else if (now !== before) {
-      await track($, path)
-      reread.push(path)
+      try {
+        await track($, path, true)
+        reread.push(path)
+      } catch {
+        // Read halfway through a save, or too slow this time: tried again on the next check, and Reload is lit meanwhile.
+        seen.set(path, before)
+        await markStale($, path, true)
+      }
     }
   }
   return reread
+}
+
+/** Lights or clears a file's Reload: a redraw follows. */
+async function markStale($: EngineInterface, path: string, isStale: boolean) {
+  if (session.stale.has(path) === isStale) return
+  if (isStale) session.stale.add(path)
+  else session.stale.delete(path)
+  await update($, open, old => ({ ...old, version: old.version + 1 }))
 }
 
 // ── Comments ──
@@ -482,7 +776,7 @@ async function jumpTo($: EngineInterface, id: string, surface: RenderSurface) {
 async function deliver($: EngineInterface, how: 'fill' | 'submit') {
   const pending = (await read($, comments)).filter(c => c.status === 'draft')
   if (pending.length === 0) return
-  const text = feedbackPrompt(pending)
+  const text = feedbackPrompt(pending, session.folder)
   const count = plural(pending.length, 'comment')
   const ids = new Set(pending.map(c => c.id))
   if (how === 'fill') {
@@ -493,6 +787,7 @@ async function deliver($: EngineInterface, how: 'fill' | 'submit') {
     }
     await update($, comments, old => old.map(c => (ids.has(c.id) ? { ...c, status: 'queued' as const } : c)))
     $.ui.toast(`Your ${count} ${pending.length === 1 ? 'is' : 'are'} in the prompt box. Edit, then press Enter.`)
+    await releaseKeys($)
     return
   }
   const batch = crypto.randomUUID()
@@ -501,6 +796,24 @@ async function deliver($: EngineInterface, how: 'fill' | 'submit') {
   await update($, comments, old => old.map(c => (ids.has(c.id) ? { ...c, status: 'sent' as const, batch } : c)))
   void $.prompt.submit({ text })
   $.ui.toast(`✓ Sent ${count}. Claude is updating the file.`)
+  await releaseKeys($)
+}
+
+/**
+ * Hands the keyboard back to Claude's prompt once comments are sent, so what
+ * the person types next goes to Claude, not into another comment. There is no
+ * call for that: the pane is closed and opened again without asking for the
+ * keys, and the selection let go so no comment box takes them.
+ */
+async function releaseKeys($: EngineInterface) {
+  await update($, selection, () => null)
+  await update($, view, old => ({ top: old.top, left: old.left, sheet: old.sheet, ...(old.raw ? { raw: old.raw } : {}) }))
+  try {
+    await $.ui.close({ id: PANE })
+    await openPane($)
+  } catch {
+    /* the pane stays as it is; Esc still hands the keys back */
+  }
 }
 
 async function backToDrafts($: EngineInterface) {
@@ -581,22 +894,43 @@ async function onViewerPost($: EngineInterface, post: ViewerPost, surface: Rende
     const [r1, r2] = [Math.min(anc[0], cur[0]), Math.max(anc[0], cur[0])]
     const [c1, c2] = [Math.min(anc[1], cur[1]), Math.max(anc[1], cur[1])]
     const described = d.kind === 'lines' ? describeLines(d, r1, r2) : describeGrid(d, moved.sheet, r1, r2, c1, c2)
-    if (described) await update($, selection, () => ({ path: d.path, ...(moved?.raw ? { raw: true as const } : {}), ...described }))
+    if (!described) return
+    const chosen: ReviewSelection = { path: d.path, ...(moved?.raw ? { raw: true as const } : {}), ...described }
+    await update($, selection, () => chosen)
+    // A click or drag puts the keys in the comment box, so the person just types; arrow keys stay with the document.
+    if (post.type === 'select') {
+      // A click doesn't give the pane the keyboard: ask for it (granted while the prompt box is empty), and the comment box's autoFocus takes it.
+      const key = commentKey(await read($, comments), chosen)
+      const moved = await $.ui.focus({ requestId: PANE, key }).catch(() => ({ deny: 'failed' }))
+      if (moved.deny) {
+        await $.ui.open({ id: PANE, title: TITLE, focus: true }).catch(() => undefined)
+        await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+      }
+    }
   }
+}
+
+/** The comment box's key for a selection: one already commented on edits that comment. */
+function commentKey(notes: ReviewComment[], sel: ReviewSelection) {
+  const editing = notes.find(c => c.status === 'draft' && isAt(c, sel))
+  // A new key on each file switch: text typed but not added stays with its own file, never another's box.
+  return editing ? `edit-${editing.id}-${editing.text.length}` : `comment-${notes.length}${session.switches > 0 ? `-f${session.switches}` : ''}`
 }
 
 /** After Claude writes or edits a file: note it, and reread it if it is open. Returns the tool's own result. */
 async function afterEdit<R extends { deny?: unknown; isError?: unknown }>($: EngineInterface, e: object, ran: R): Promise<R> {
   if (ran.deny === undefined && !ran.isError) {
-    const input = ((e as { input?: unknown }).input ?? e) as { file_path?: unknown; notebook_path?: unknown }
-    const path = input.file_path ?? input.notebook_path
-    if (typeof path === 'string') await noteFile($, path)
+    const input = ((e as { input?: unknown }).input ?? e) as { file_path?: unknown }
+    const path = input.file_path
+    if (typeof path === 'string') await noteFile($, path, true)
   }
   return ran
 }
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    session.switches = 0
+    session.stale.clear()
     session.folder = normalizePath(e.cwd)
     session.realFolder = normalizePath(
       await $.fs
@@ -604,6 +938,8 @@ export const register: Register = on => {
         .then(st => st.realPath ?? e.cwd)
         .catch(() => e.cwd),
     )
+    session.isSharp = /kitty|ghostty/i.test(`${(await $.env.get('TERM')) ?? ''} ${(await $.env.get('TERM_PROGRAM')) ?? ''}`)
+    session.opener = await openerHere($)
     const started = await next(e)
     // A reload starts this module afresh: read the open file again, and let
     // go of sends whose turn this module can no longer follow.
@@ -614,14 +950,25 @@ export const register: Register = on => {
       await update($, open, old => ({ ...old, version: old.version + 1 }))
     }
     await update($, comments, old => old.filter(c => c.status !== 'sent'))
-    // Only the theme row is kept; the other rows (other plugins' settings among them) are dropped here.
-    const theme = (await $.config.list().catch(() => [])).find(row => row.key === 'theme')
-    session.theme = typeof theme?.value === 'string' ? theme.value : 'dark'
     // Watch the listed files: whatever changes one, the pane rereads it within a couple of seconds.
     for (const path of await read($, files)) seen.set(path, await mtimeOf($, path))
-    $.clock.every(2000, () => void refreshChanged($).catch(() => undefined))
+    // One refresh at a time: a slow reread is never started again on top of itself.
+    $.clock.every(2000, () => {
+      if (session.isRefreshing) return
+      session.isRefreshing = true
+      void refreshChanged($)
+        .catch(() => undefined)
+        .finally(() => {
+          session.isRefreshing = false
+        })
+    })
     const stored = await $.store.get('autoOpen')
     await update($, autoOpen, () => stored === true)
+    // Once, after install: proof it worked, and the first thing to try.
+    if ((await $.store.get('welcomed')) !== true) {
+      await $.store.set('welcomed', true)
+      $.ui.toast('🐼 Lazy Panda Panel is ready. Type /panda examples to try it. Everything opens without installing anything; only Word, Excel and PDF files over 4 MB need Python.')
+    }
     await $.command.register({
       name: 'panda',
       description: 'Open the Lazy Panda Panel, or a file in it: /panda [file] · /panda examples · /panda auto on|off · /panda setup',
@@ -633,7 +980,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'open_file',
       description:
-        "Open a file in the user's review pane inside Claude Code, where they can read it, highlight parts and leave comments for you. " +
+        "Open a file in the user's Lazy Panda Panel, a review pane inside Claude Code, where they can read it, highlight parts and leave comments for you. " +
         'Call this when the user asks to open, show or view a file (md, html, txt, csv, json, yaml, adf, docx, xlsx, pdf, png). ' +
         `The path may be relative to the working directory. ${where} Nothing from the file is returned to you.`,
       inputSchema: {
@@ -646,7 +993,7 @@ export const register: Register = on => {
     await $.tool.register({
       name: 'open_files',
       description:
-        "Open several files in the user's review pane at once, as tabs in the order given; the first is shown. " +
+        "Open several files in the user's Lazy Panda Panel (a review pane) at once, as tabs in the order given; the first is shown. " +
         'With replace: true the pane starts fresh: these become the only tabs and the comments not yet sent are deleted (use for a clean review or a demo). ' +
         where,
       inputSchema: {
@@ -664,69 +1011,87 @@ export const register: Register = on => {
 
   on('command.run', { command: 'panda' }, async ($, e) => {
     const args = e.args.trim()
-    if (args === 'auto on' || args === 'auto off') {
-      const isOn = args === 'auto on'
+    // Keywords in any case and spacing: "/panda Auto  On" is "auto on".
+    const word = args.toLowerCase().replace(/\s+/g, ' ')
+    // Only the person changes settings, writes samples or opens files outside the working folder; anything else running /panda can't.
+    // The person at the terminal (or on Remote Control): not another plugin, a peer session, a channel or a scheduled task.
+    const isPerson = ['composer', 'bridge', undefined].includes(e.origin?.kind as string | undefined)
+    if (word === 'auto on' || word === 'auto off') {
+      if (!isPerson) return { text: 'Only you can change auto-open: type /panda auto on|off.', exitCode: 1 }
+      const isOn = word === 'auto on'
       await setAutoOpen($, isOn)
       return {
         text: isOn
-          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML or Markdown files, the Lazy Panda Panel opens on them.`
+          ? `Auto-open is on: when a turn finishes with 1–${AUTO_MAX_FILES} new Word, PDF, PNG, HTML, Markdown or Confluence files, the Lazy Panda Panel opens on them.`
           : 'Auto-open is off. New files are listed in the pane; open it with /panda.',
       }
     }
-    if (args === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /panda auto on|off.` }
-    if (args === 'examples' || args.startsWith('examples ')) {
-      // The bundled script writes the samples: it copies the text ones and generates the Excel and Word ones.
-      const folder = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
-      const ran = await runHelper($, `examples\n${folder}`, 120_000)
-      if (!ran) return { text: `Could not write the samples. ${NO_PYTHON}`, exitCode: 1 }
-      const written = ran.stdout
-        .split(/\r?\n/)
-        .filter(isAbsolutePath)
-        .map(normalizePath)
-      if (written.length === 0) return { text: `Could not write the samples: ${sanitizeLine(ran.stderr.trim().slice(-400))}`, exitCode: 1 }
-      await update($, files, () => written)
-      await update($, comments, old => old.filter(c => c.status === 'sent'))
+    if (word === 'auto') return { text: `Auto-open is ${(await read($, autoOpen)) ? 'on' : 'off'}. Change it with /panda auto on|off.` }
+    if (word === 'examples' || word.startsWith('examples ')) {
+      if (!isPerson) return { text: 'Only you can write the samples: type /panda examples.', exitCode: 1 }
+      // Always a new folder, so nothing is ever written over, nor through a link someone left there.
+      const base = typedPath(args.slice('examples'.length).trim() || 'lazy-panda-panel-examples')
+      let folder = base
+      for (let k = 2; await $.fs.exists(folder); k += 1) {
+        if (k > 99) return { text: `There are already 99 sample folders next to ${base}. Delete some, or name another: /panda examples <folder>.`, exitCode: 1 }
+        folder = `${base}-${k}`
+      }
+      const texts: string[] = []
+      for (const name of EXAMPLE_TEXTS) {
+        const target = `${folder}/${name}`
+        await $.fs.write(target, await $.fs.read(`${$.plugin.root}/examples/${name}`))
+        texts.push(target)
+      }
+      // The Excel and Word samples and the picture are binary files, which only Python can write here.
+      const made = await runPython($, 'examples', folder, 30_000)
+      const binaries =
+        typeof made === 'string' && made !== 'none' && made !== 'timeout'
+          ? made
+              .split(/\r?\n/)
+              .filter(line => line.startsWith('LPP1 wrote '))
+              .map(line => normalizePath(line.slice('LPP1 wrote '.length).trim()))
+          : []
+      const written = [...binaries, ...texts]
+      await update($, files, old => [...written, ...old.filter(path => !written.includes(path))].slice(0, MAX_FILES))
       if (written[0]) await show($, written[0])
       await openPane($)
       return {
         text:
           `Wrote ${written.length} sample files to ${folder} and opened them in the Lazy Panda Panel.` +
-          (ran.exitCode === 0 ? '' : ' The Excel and Word samples need /panda setup first.'),
+          (binaries.length > 0 ? '' : ' The Excel, Word and picture samples need Python 3 on this computer (optional; /panda setup checks). You can also ask Claude to make you a sample spreadsheet.'),
       }
     }
-    if (args === 'setup') {
-      const ran = await runHelper($, 'setup', 600_000)
-      if (!ran) {
-        const isOffered = await offerRequest($, INSTALL_PYTHON_REQUEST)
-        return {
-          text: isOffered
-            ? 'Word, Excel and PDF files need Python, which isn’t on this computer yet. Nothing has been installed.\n' +
-              'If you’d like Claude to help you install it, press Enter: the request is in your prompt box. Claude will ask before installing anything. If not, clear the prompt box.'
-            : 'Word, Excel and PDF files need Python, which isn’t on this computer yet. Ask Claude: “Please help me install Python for the Lazy Panda Panel.”',
-          exitCode: 1,
-        }
+    if (word === 'setup') {
+      // Setup installs nothing: it looks for Python 3, which only Word, Excel and PDF files over 4 MB need.
+      session.python = null
+      const found = await runPython($, 'read', '--check', 15_000)
+      if (found !== 'none' && found !== 'timeout') {
+        const version = /LPP1 ok (\S+)/.exec(found)?.[1] ?? '3'
+        return { text: `Python ${version} is ready. There’s nothing to install: Word, Excel and PDF files over 4 MB will open too.` }
       }
-      if (ran.exitCode === 0) {
-        return { text: 'Installed python-docx, openpyxl and pypdf (pinned versions, hash-checked) in .cache/lazy-panda-panel/venv in your home folder. Word, Excel and PDF files can be shown now.' }
-      }
-      const error = sanitizeLine(ran.stderr.trim().slice(-1500), 1500)
-      const isOffered = await offerRequest($, setupFailedRequest(ran.stderr.trim().slice(-1500)))
+      const intro = 'Everything up to 4 MB already opens without Python. Python 3 is only needed for Word, Excel and PDF files over 4 MB, and it isn’t on this computer (or Claude Code can’t see it yet). Nothing has been installed.'
+      const isOffered = isPerson && (await offerRequest($, INSTALL_PYTHON_REQUEST))
       return {
-        text: `Setup failed: ${error}` + (isOffered ? '\nTo have Claude explain it and help you fix it, press Enter: the request is in your prompt box. If not, clear the prompt box.' : ''),
-        exitCode: 1,
+        text: isOffered
+          ? `${intro}\nIf you’d like Claude to help you install it, press Enter: the request is in your prompt box, and Claude will ask before installing anything. If not, delete the text in the prompt box.`
+          : `${intro}\nIf you’d like it, ask Claude: “Please help me install Python 3 for the Lazy Panda Panel.”`,
       }
     }
     if (args) {
-      const path = typedPath(args)
-      if (!(await $.fs.exists(path))) return { text: `No file at ${path}.`, exitCode: 1 }
+      let path = typedPath(args)
+      const plain = unescaped(args)
+      if (!(await $.fs.exists(path)) && plain !== null && (await $.fs.exists(typedPath(plain)))) path = typedPath(plain)
+      if (!(await $.fs.exists(path))) return { text: `No file at ${path}.${/^~/.test(args.trim()) && !homeOf(session.folder) ? ' Type the full path: ~ can’t be worked out here.' : ''}`, exitCode: 1 }
+      if ((await $.fs.stat(path)).kind === 'dir') return { text: `${path} is a folder. Name a file in it: /panda ${path}/<file>.`, exitCode: 1 }
       if (!isSupported(path)) return { text: `The pane does not show .${extOf(path) || '(no extension)'} files. It shows ${[...TEXT_KINDS, ...DOC_KINDS, 'png'].join(', ')}.`, exitCode: 1 }
+      if (!isPerson && !(await isAllowed($, path))) return { text: `${path} is outside the working folder; only you can open it, with /panda ${path}.`, exitCode: 1 }
       await show($, path)
     } else if ((await read($, open)).path === null) {
       const first = (await read($, files))[0]
       if (first) await show($, first)
     }
     const opened = await openPane($)
-    return { text: opened.isPlaced ? 'Review pane opened.' : 'Review pane is waiting for room: widen the terminal.' }
+    return { text: opened.isPlaced ? 'Lazy Panda Panel opened.' : 'The Lazy Panda Panel needs a wider terminal: make the window wider, or run /panda again.' }
   }).catch(($, e, next) => ({
     // Whatever went wrong, /panda answers with it, rather than Claude Code's note that no hook answered.
     text: `/panda ${e.args.trim()} failed: ${sanitizeLine(String((next.error as { message?: unknown } | undefined)?.message ?? next.error ?? 'unknown error'), 400)}`,
@@ -738,17 +1103,17 @@ export const register: Register = on => {
     const input = ((e as { input?: unknown }).input ?? e) as { path?: unknown }
     const path = typeof input.path === 'string' ? resolvePath(input.path) : ''
     if (!path || !(await $.fs.exists(path))) return reply(`No file at ${path || '(no path given)'}.`, true)
-    if (!isSupported(path)) return reply(`The review pane does not show .${extOf(path)} files.`, true)
+    if (!isSupported(path)) return reply(`The Lazy Panda Panel does not show .${extOf(path)} files.`, true)
     if (!(await isAllowed($, path))) return reply(`${path} is outside the working folder. Ask the user to open it with /panda ${path}`, true)
     await show($, path)
     const opened = await openPane($)
     return reply(opened.isPlaced ? `Opened ${path} in the Lazy Panda Panel.` : `Loaded ${path}; the pane will show once the terminal is wider (or the user runs /panda).`)
-  })
+  }).catch(() => reply('The Lazy Panda Panel couldn’t open that file just now. Ask the user to open it with /panda <path>.', true))
 
   on('tool.call', { tool: 'mcp__lazy-panda-panel__open_files' }, async ($, e) => {
     const input = ((e as { input?: unknown }).input ?? e) as { paths?: unknown; replace?: unknown }
     const asked = Array.isArray(input.paths)
-      ? [...new Set(input.paths.filter((p): p is string => typeof p === 'string').slice(0, MAX_FILES).map(resolvePath))]
+      ? [...new Map(input.paths.filter((p): p is string => typeof p === 'string').slice(0, MAX_FILES).map(p => [sameCase(resolvePath(p)), resolvePath(p)] as const)).values()]
       : []
     const usable: string[] = []
     const skipped: string[] = []
@@ -771,7 +1136,7 @@ export const register: Register = on => {
       `Opened ${plural(usable.length, 'file')} in the Lazy Panda Panel${opened.isPlaced ? '' : ' (it shows once the terminal is wider, or the user runs /panda)'}.` +
         (skipped.length ? ` Skipped (missing, unsupported or outside the working folder): ${skipped.join(', ')}.` : ''),
     )
-  })
+  }).catch(() => reply('The Lazy Panda Panel couldn’t open those files just now. Ask the user to open them with /panda <path>.', true))
 
   on('prompt.submit', async ($, e, next) => {
     session.turnFiles = new Set()
@@ -801,13 +1166,12 @@ export const register: Register = on => {
       const listed = new Set(await read($, files))
       const found: string[] = []
       await scan($, session.folder, since, 3, found, { left: 4000 })
-      for (const path of found.filter(one => !listed.has(one)).slice(0, 20)) await noteFile($, path)
+      for (const path of found.filter(one => !listed.has(one)).slice(0, 20)) await noteFile($, path, false)
     }
     return ran
   }).catch(($, e, next) => next(e))
   on('tool.call', { tool: 'Write' }, async ($, e, next) => afterEdit($, e, await next(e))).catch(($, e, next) => next(e))
   on('tool.call', { tool: 'Edit' }, async ($, e, next) => afterEdit($, e, await next(e))).catch(($, e, next) => next(e))
-  on('tool.call', { tool: 'NotebookEdit' }, async ($, e, next) => afterEdit($, e, await next(e))).catch(($, e, next) => next(e))
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
@@ -830,9 +1194,12 @@ export const register: Register = on => {
     if ((await read($, autoOpen)) && first && outputs.length <= AUTO_MAX_FILES) {
       if ((await read($, open)).path !== first) await show($, first)
       const opened = await openPane($)
-      if (!opened.isPlaced) $.ui.toast(`Review: ${baseName(first)} is ready. Run /panda to see it (the terminal is too narrow to open it by itself).`)
+      if (!opened.isPlaced) $.ui.toast(`🐼 ${baseName(first)} is ready. Type /panda to see it (the terminal is too narrow to open it by itself).`)
     } else {
-      $.ui.status(`review: ${plural(made.length, 'file')} updated · /panda to open`)
+      // The file on show was reread already; only others need /panda.
+      const shown = (await read($, open)).path
+      const others = made.filter(path => path !== shown)
+      $.ui.status(others.length > 0 ? `🐼 ${plural(others.length, 'file')} updated · /panda to open` : `🐼 ${baseName(made[0] ?? '')} updated in the panel`)
     }
     return done
   }).catch(($, e, next) => next(e))
@@ -858,6 +1225,13 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The mouse wheel scrolls the document, three rows a tick, as the page keys do: the pane draws its own window over it.
+  on('ui.scroll', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
+    if (e.origin.kind !== 'person' || !e.pointer) return next(e)
+    await onViewerPost($, { type: 'scroll', rows: e.by * 3 }, 'terminal')
+    return {}
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     // Input is on the terminal and desktop, Image on the terminal alone.
@@ -867,11 +1241,11 @@ export const register: Register = on => {
     const ctx: Ctx = {
       els,
       Input: hasViews ? Input : undefined,
-      Image: e.surface === 'terminal' ? Image : undefined,
+      Image: e.surface === 'terminal' && session.isSharp ? Image : undefined,
       surface: e.surface,
       columns: Math.max(40, e.props.bodyColumns),
       bodyRows: e.props.scroll.bodyRows,
-      pal: paletteFor(session.theme),
+      pal: PALETTE,
       list: await read($, files),
       path,
       version,
@@ -881,7 +1255,9 @@ export const register: Register = on => {
       notes: await read($, comments),
       change: await read($, changed),
       isAuto: await read($, autoOpen),
+      picture: null,
     }
+    ctx.picture = await selectedPicture($, ctx.d, ctx.sel, version, ctx.v.raw === true)
     const { Box, Text } = els
     const drafts = ctx.notes.filter(c => c.status === 'draft')
     const section =
@@ -890,11 +1266,13 @@ export const register: Register = on => {
         : !ctx.d
           ? { bar: <Text color={ctx.pal.dim}>Loading…</Text>, body: <Text> </Text> }
           : ctx.d.kind === 'error'
-            ? { bar: <Text color={ctx.pal.error} bold>Couldn’t show {baseName(ctx.d.path)}</Text>, body: <Text color={ctx.pal.subtle}>{ctx.d.message}</Text> }
+            ? ctx.d.isNotice
+              ? { bar: <Text color={ctx.pal.warning} bold>ⓘ {baseName(ctx.d.path)} is over 4 MB, so it needs Python to open</Text>, body: <Text color={ctx.pal.text}>{ctx.d.message}</Text> }
+              : { bar: <Text color={ctx.pal.error} bold>Couldn’t show {baseName(ctx.d.path)}</Text>, body: <Text color={ctx.pal.subtle}>{ctx.d.message}</Text> }
             : ctx.d.kind === 'image'
-              ? imageSection(ctx, ctx.d)
+              ? imageSection($, ctx, ctx.d)
               : ctx.d.kind === 'lines'
-                ? linesSection(ctx, ctx.d, Math.min(drafts.length, MAX_LISTED))
+                ? linesSection($, ctx, ctx.d, Math.min(drafts.length, MAX_LISTED))
                 : gridSection($, ctx, ctx.d, Math.min(drafts.length, MAX_LISTED))
     const rule = <Text color={ctx.pal.dim}>{'─'.repeat(ctx.columns)}</Text>
     const actions = actionsRow($, ctx)
@@ -922,12 +1300,12 @@ export const register: Register = on => {
         {rule}
         {document}
         {section.after ?? null}
-        {section.footnote ? <Text color={ctx.pal.warning} wrap="truncate-end">{section.footnote}</Text> : null}
-        <Box marginTop={1}>{commentRow($, ctx)}</Box>
-        <Box marginTop={1}>{commentList($, ctx)}</Box>
-        {actions && <Box marginTop={1}>{actions}</Box>}
+        {section.footnote ? <Text color={ctx.pal.warning} wrap="wrap">{section.footnote}</Text> : null}
+        <Box marginTop={isCompact(ctx) ? 0 : 1}>{commentRow($, ctx)}</Box>
+        <Box marginTop={isCompact(ctx) ? 0 : 1}>{commentList($, ctx)}</Box>
+        {actions && <Box marginTop={isCompact(ctx) ? 0 : 1}>{actions}</Box>}
         {spinner}
-        {keyLine && (
+        {keyLine && !isCompact(ctx) && (
           <Box marginTop={1} flexDirection="column">
             {rule}
             {keyLine}
@@ -944,6 +1322,7 @@ type Els = ReturnType<EngineInterface['ui']['resolve']>
 type Ctx = {
   els: Els
   Input: Elements['terminal']['Input'] | undefined
+  /** Present only where the terminal draws real pictures. */
   Image: Elements['terminal']['Image'] | undefined
   surface: RenderSurface
   columns: number
@@ -958,7 +1337,11 @@ type Ctx = {
   notes: ReviewComment[]
   change: { path: string; key: number; rows: number[]; cells: string[] } | null
   isAuto: boolean
+  /** The picture the selection is on, for the preview. */
+  picture: Shown | null
 }
+/** `result` null: not decoded, because this terminal shows a card instead. */
+type Shown = { index: number; label: string; result: Pixels | string | null }
 /** A section's parts; `viewer` is what the document view draws, where the surface has one (`body` is drawn otherwise). */
 type Section = {
   bar: JSX.Element
@@ -973,13 +1356,24 @@ type Section = {
  * Rows the document may use: what the pane has, less the bars, the comment
  * box and list, the actions and the keys around it.
  */
-const docHeight = (ctx: Ctx, extra: number, listed: number) => clamp(ctx.bodyRows - (13 + extra + listed) + 1, 5, 60)
+const docHeight = (ctx: Ctx, extra: number, listed: number) =>
+  isCompact(ctx)
+    ? clamp(ctx.bodyRows - (3 + extra + (listed > 0 ? listed + 2 : 0) + (ctx.sel && ctx.Input ? 3 : 1)), 1, 60)
+    : clamp(ctx.bodyRows - (15 + extra + listed + (ctx.sel && ctx.Input ? 2 : 0)) + 1, 5, 60)
+
+/** A short pane (a small terminal, or one the person dragged smaller): no spacing, box borders or key hints, so the comment box always shows. */
+const isCompact = (ctx: Ctx) => ctx.bodyRows < 26
+
+/** The rows a note under the document takes, wrapped at the pane's width. */
+const noteRows = (ctx: Ctx, note: string | undefined) => (note ? Math.ceil(strWidth(note) / ctx.columns) : 0)
 
 function fileBarProps(ctx: Ctx): FileBarProps {
   const { pal, path, d, v, list } = ctx
   const asides: NonNullable<FileBarProps['asides']> = []
   if (d?.kind === 'lines' && d.hasSource) asides.push({ id: 'source', label: v.raw ? '◧ Formatted' : '‹› Source', short: v.raw ? '◧' : '‹›', color: pal.subtle })
-  if (path) asides.push({ id: 'reload', label: '⟳ Reload', short: '⟳', color: pal.subtle })
+  // Lit when the file changed and the pane couldn't reread it by itself.
+  if (path && session.stale.has(path)) asides.push({ id: 'reload', label: '⟳ Changed · Reload', short: '⟳!', color: pal.warning, isBold: true })
+  else if (path) asides.push({ id: 'reload', label: '⟳ Reload', short: '⟳', color: pal.subtle })
   asides.push({ id: 'auto', label: ctx.isAuto ? '● Auto-open' : '○ Auto-open', short: ctx.isAuto ? '●' : '○', color: ctx.isAuto ? pal.success : pal.dim, isBold: ctx.isAuto })
   const badge = path ? BADGES[extOf(path)] : undefined
   return {
@@ -994,12 +1388,13 @@ function fileBarProps(ctx: Ctx): FileBarProps {
 
 function emptySection(ctx: Ctx): Section {
   const { Box, Text } = ctx.els
-  const panda = pandaRows()
+  // The panda only when it fits whole beside the text; a cut-off panda looks broken, so a small pane gets the text alone.
+  const panda = ctx.bodyRows >= 20 && ctx.columns >= 70 ? pandaRows() : []
   return {
     bar: <Text> </Text>,
     body: (
-      <Box flexDirection="row" columnGap={3} paddingY={1}>
-        <Box flexDirection="column">
+      <Box flexDirection="row" columnGap={3} paddingTop={1}>
+        {panda.length > 0 && <Box flexDirection="column" flexShrink={0}>
           {panda.map((runs, y) => (
             <Text key={`panda-${y}`}>
               {runs.map((run, x) => (
@@ -1009,28 +1404,34 @@ function emptySection(ctx: Ctx): Section {
               ))}
             </Text>
           ))}
-        </Box>
+        </Box>}
         <Box flexDirection="column">
           <Text color={ctx.pal.subtle}>      z</Text>
           <Text color={ctx.pal.subtle}>    Z</Text>
           <Text color={ctx.pal.subtle}>  z</Text>
           <Text> </Text>
           <Text bold color={ctx.pal.accent}>Nothing to review yet. The panda is napping.</Text>
-          <Text color={ctx.pal.subtle}>Files Claude creates will open here.</Text>
-          <Text color={ctx.pal.subtle}>Or run /panda and a file path, or ask Claude to "open" a file.</Text>
+          <Text>
+            <Text color={ctx.pal.subtle}>Try it now:   </Text>
+            <Text color={ctx.pal.accent}>/panda examples</Text>
+          </Text>
+          <Text>
+            <Text color={ctx.pal.subtle}>Open a file:  </Text>
+            <Text color={ctx.pal.accent}>/panda report.docx</Text>
+            <Text color={ctx.pal.subtle}>, or ask Claude to “open the report”</Text>
+          </Text>
+          <Text color={ctx.pal.subtle}>
+            {ctx.isAuto ? 'Auto-open is on: new files from Claude open here when it finishes.' : 'Turn on ○ Auto-open (top right) and new files from Claude open here by themselves.'}
+          </Text>
         </Box>
       </Box>
     ),
   }
 }
 
-function imageSection(ctx: Ctx, d: Extract<Doc, { kind: 'image' }>): Section {
+function imageSection($: EngineInterface, ctx: Ctx, d: Extract<Doc, { kind: 'image' }>): Section {
   const { Text } = ctx.els
-  const { pal, Image } = ctx
-  const height = docHeight(ctx, 0, 0)
-  const roomCols = Math.min(ctx.columns, 120)
-  const rowsTall = clamp(Math.round((roomCols * d.height) / d.width / 2), 3, height)
-  const cols = clamp(Math.round((rowsTall * 2 * d.width) / d.height), 3, roomCols)
+  const { pal } = ctx
   return {
     bar: (
       <Text wrap="truncate-end">
@@ -1038,12 +1439,55 @@ function imageSection(ctx: Ctx, d: Extract<Doc, { kind: 'image' }>): Section {
         <Text color={pal.subtle}>  {d.width} × {d.height} px · comments apply to the whole image</Text>
       </Text>
     ),
-    body: Image ? (
-      <Image key="png" source={{ png: d.png }} columns={cols} rows={rowsTall} alt={`${baseName(d.path)} (pictures show in kitty or Ghostty)`} />
-    ) : (
-      <Text color={pal.subtle}>Pictures show in the terminal only.</Text>
-    ),
+    body: picturePreview($, ctx, Math.min(ctx.columns, 120), docHeight(ctx, 1, 0)) ?? <Text> </Text>,
   }
+}
+
+/** Where to see a picture properly, by the file it is in. */
+const viewerFor = (path: string) => ({ docx: 'Word', pdf: 'your PDF reader', png: 'an image viewer', html: 'a browser', htm: 'a browser' })[extOf(path)] ?? 'an image viewer'
+
+/** The cells a picture's preview takes, at most `maxCols` × `maxRows`; none when there is nothing to draw. */
+function previewSize(ctx: Ctx, maxCols: number, maxRows: number) {
+  const result = ctx.picture?.result
+  return result && typeof result !== 'string' && ctx.Image ? fitCells(result, maxCols, maxRows) : null
+}
+
+/**
+ * The selected picture: drawn for real where the terminal can (kitty,
+ * Ghostty); elsewhere a card that says what it is and opens it in the
+ * computer's own app, since coloured blocks can't show a picture legibly.
+ */
+function picturePreview($: EngineInterface, ctx: Ctx, maxCols: number, maxRows: number): JSX.Element | null {
+  const { Box, Text, Button } = ctx.els
+  const { pal, picture, Image, path, d } = ctx
+  if (!picture || !path) return null
+  const isFile = d?.kind === 'image'
+  const name = isFile ? baseName(path) : `Picture ${picture.index + 1}${picture.label ? `: ${sanitizeLine(picture.label, 80)}` : ''}`
+  const px = picture.result
+  const size = previewSize(ctx, maxCols, maxRows)
+  if (px && typeof px !== 'string' && Image && size) {
+    return (
+      <Box flexDirection="column">
+        <Image key="picture" source={toRgba(px)} columns={size.columns} rows={size.rows} alt={name} />
+        <Text color={pal.subtle} wrap="truncate-end">
+          ▣ {name} · {px.fullWidth} × {px.fullHeight} px
+        </Text>
+      </Box>
+    )
+  }
+  // Only what the computer has an app for: the picture file, or the Word, PDF or web page it sits in.
+  const canOpen = session.opener !== null && /\.(png|jpe?g|gif|docx|pdf|html?)$/i.test(path)
+  const where = viewerFor(path)
+  const why = typeof px === 'string' ? `can’t be shown: ${px}` : 'isn’t drawn here: this terminal can’t show pictures sharply (kitty and Ghostty can)'
+  return (
+    <Box flexDirection="column">
+      <Text color={pal.text} wrap="wrap">
+        <Text bold>▣ {isFile ? 'This picture' : name}</Text>
+        <Text color={pal.subtle}> {why}.{canOpen ? '' : ` Open ${isFile ? 'it' : 'the file'} in ${where} on your computer to see it.`}</Text>
+      </Text>
+      {canOpen && <Button key="open-outside" label={`Open in ${where}`} plain onPress={() => void openOutside($, path)} />}
+    </Box>
+  )
 }
 
 /** A document laid out at one width: kept until the file, its version or the width changes. */
@@ -1075,11 +1519,18 @@ function layoutOf(d: LinesDoc, version: number, columns: number, isRaw: boolean)
   return layoutCache
 }
 
-function linesSection(ctx: Ctx, d: LinesDoc, listed: number): Section {
+function linesSection($: EngineInterface, ctx: Ctx, d: LinesDoc, listed: number): Section {
   const { Box, Text } = ctx.els
   const { pal, v, sel, notes, columns } = ctx
-  const height = docHeight(ctx, d.note ? 1 : 0, listed)
+  // A selected picture is drawn under the document, which gives up the rows it takes.
+  const previewRows = clamp(Math.floor(ctx.bodyRows * 0.45), 6, 24)
+  const size = previewSize(ctx, Math.min(columns, 120), previewRows)
+  const preview = ctx.picture ? picturePreview($, ctx, Math.min(columns, 120), previewRows) : null
+  const previewHeight = preview ? (size ? size.rows + 1 : 3) + 1 : 0
+  const room = docHeight(ctx, noteRows(ctx, d.note) + previewHeight, listed)
   const { lines, firstVisual, stripe, gutter, textWidth } = layoutOf(d, ctx.version, columns, v.raw === true)
+  // A longer document gives one row to saying how much is below.
+  const height = lines.length > room ? Math.max(1, room - 1) : room
   drawnBy.set(ctx.surface, { total: lines.length, firstVisual, height, shownCols: 1 })
   const freshKey = ctx.change && ctx.change.path === d.path ? ctx.change.key : 0
   const changedRows = new Set(freshKey ? ctx.change?.rows : [])
@@ -1125,9 +1576,17 @@ function linesSection(ctx: Ctx, d: LinesDoc, listed: number): Section {
   return {
     bar,
     body,
-    ...(rows.length > 0 ? { viewer: { props: { mode: 'lines', pal, rows, gutter, width: textWidth, flashKey: freshKey }, height: rows.length } } : {}),
+    ...(rows.length > 0
+      ? (() => {
+          const moreBelow = Math.max(0, lines.length - (top + rows.length))
+          const scroll = { top, shown: rows.length, total: lines.length }
+          return { viewer: { props: { mode: 'lines' as const, pal, rows, gutter, width: textWidth, flashKey: freshKey, moreBelow, scroll }, height: rows.length + (moreBelow > 0 ? 1 : 0) } }
+        })()
+      : {}),
+    ...(preview ? { after: <Box marginTop={1}>{preview}</Box> } : {}),
     ...(d.note ? { footnote: d.note } : {}),
     keys: [
+      ...(d.rows.some(row => row.pic !== undefined) ? ([['▣', 'click to see a picture']] as [string, string][]) : []),
       ['click', unit === 'lines' ? 'a line' : 'a paragraph'],
       ['drag', 'a range'],
       ['↑↓', 'move'],
@@ -1144,7 +1603,7 @@ function gridSection($: EngineInterface, ctx: Ctx, d: GridDoc, listed: number): 
   const sheet = d.sheets[sheetIndex]
   if (!sheet) return { bar: <Text color={pal.dim}>This workbook has no sheets.</Text>, body: <Text> </Text> }
   const footnote = [d.note, sheet.isCut ? 'Only the first 500 rows × 40 columns of this sheet are shown.' : ''].filter(Boolean).join(' ')
-  const height = docHeight(ctx, 2 + (footnote ? 1 : 0), listed)
+  const height = docHeight(ctx, 2 + noteRows(ctx, footnote), listed)
   const isHeader = hasHeader(sheet)
   const bodyStart = isHeader ? 1 : 0
   const widths = sheet.cols.map((_, c) => clamp(Math.max(1, ...sheet.rows.slice(0, 300).map(r => strWidth(r[c]?.v ?? ''))), 3, 16))
@@ -1317,29 +1776,48 @@ function commentRow($: EngineInterface, ctx: Ctx) {
   const { pal, sel, d, Input } = ctx
   if (!sel) {
     if (!d || d.kind === 'error') return null
+    // A box that looks like where comments go, saying how to start one.
     return (
-      <Text>
-        <Text color={pal.dim}>✎ </Text>
-        <Text color={pal.dim} italic>Select {d.kind === 'grid' ? 'a cell' : 'some text'} to comment on it</Text>
-      </Text>
+      <Box {...(isCompact(ctx) ? {} : { borderStyle: 'round', borderColor: pal.dim, paddingX: 1 })}>
+        <Text wrap="truncate-end">
+          <Text color={pal.comment} bold>✎ Comment </Text>
+          <Text color={pal.subtle}>· {d.kind === 'image' ? 'click the picture' : `click or drag over ${d.kind === 'grid' ? 'cells' : 'lines'}`} above, then type here</Text>
+        </Text>
+      </Box>
     )
   }
   if (!Input) return <Text color={pal.subtle}>Comments can be added from the terminal.</Text>
   // A selection that already carries a waiting comment edits that comment.
   const editing = ctx.notes.find(c => c.status === 'draft' && isAt(c, sel))
+  const key = commentKey(ctx.notes, sel)
   const short = sel.sheet !== undefined ? sel.label.slice(sel.label.lastIndexOf('!') + 1) : sel.label
+  // Exactly what the comment will quote to Claude, on one or two lines: text the view cuts off (a long cell, a wide code line) is seen here.
+  const flat = sel.quote.replace(/\n/g, ' ⏎ ').replace(/ {4,}/g, run => ` ·${run.length} spaces· `)
+  const lead = `Quoted for Claude (${plural(sel.quote.length, 'character')}): `
+  const room = Math.max(10, (ctx.columns - 4) * 2 - lead.length - 16)
+  const shown = flat.length > room ? `“${flat.slice(0, room)}” … and ${flat.length - room} more characters, also sent (Edit before sending shows them all)` : `“${flat}”`
   return (
-    <Box flexDirection="row">
-      <Text color={pal.comment} bold>✎ </Text>
+    <Box flexDirection="column" {...(isCompact(ctx) ? {} : { borderStyle: 'round', borderColor: pal.comment, paddingX: 1 })}>
+      <Box flexDirection="row">
+      <Box flexShrink={0}>
+        <Text color={pal.comment} bold>✎ </Text>
+      </Box>
       <Input
-        key={editing ? `edit-${editing.id}-${editing.text.length}` : `comment-${ctx.notes.length}`}
-        label={`${editing ? 'Edit comment on' : 'Comment on'} ${cutTo(sanitizeLine(short), 80)}`}
-        placeholder={editing ? 'Clear the text and press Enter to delete' : 'What should change here?'}
+        key={key}
+        label={`${editing ? 'Edit comment on' : 'Comment on'} ${cutTo(sanitizeLine(short), clamp(Math.floor(ctx.columns * 0.25), 12, 80))}`}
+        placeholder={editing ? 'Clear it and press Enter to delete · Esc: back to Claude' : 'What should change? · Esc: back to Claude'}
         submitLabel={editing ? 'Save' : 'Add'}
         {...(editing ? { value: editing.text } : {})}
         autoFocus
         onSubmit={value => void saveComment($, value, d?.kind === 'grid')}
       />
+      </Box>
+      {sel.quote ? (
+        <Text color={pal.dim} wrap="wrap">
+          {lead}
+          {shown}
+        </Text>
+      ) : null}
     </Box>
   )
 }
@@ -1363,7 +1841,7 @@ function commentList($: EngineInterface, ctx: Ctx) {
   const { pal, sel, d, path, columns } = ctx
   const drafts = ctx.notes.filter(c => c.status === 'draft')
   if (drafts.length === 0) {
-    if (!d || d.kind === 'error') return null
+    if (!d || d.kind === 'error' || isCompact(ctx)) return null
     return (
       <Box flexDirection="column">
         {sectionHeader(ctx, 'Comments', '')}

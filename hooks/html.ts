@@ -40,8 +40,36 @@ const TOKEN = /<(\/?)([a-zA-Z][\w-]*)((?:[^>"']|"[^"]{0,2000}"|'[^']{0,2000}'){0
 
 type Open = { tag: string; attrs: string }
 
+/**
+ * Pictures written into the page (src="data:image/…") can be megabytes
+ * long: each is set aside, in one pass, and its attribute holds a short
+ * name for it (its line breaks kept, so line numbers stay right).
+ */
+function setAsideData(source: string, out: string[]): string {
+  const parts: string[] = []
+  let at = 0
+  for (;;) {
+    const found = source.indexOf('data:image/', at)
+    if (found < 0) break
+    const quote = source[found - 1]
+    if (quote !== '"' && quote !== "'") {
+      parts.push(source.slice(at, found + 11))
+      at = found + 11
+      continue
+    }
+    const end = source.indexOf(quote, found)
+    if (end < 0) break
+    const value = source.slice(found, end)
+    parts.push(source.slice(at, found), `lpp-data:${out.push(value) - 1}`, '\n'.repeat((value.match(/\n/g) ?? []).length))
+    at = end
+  }
+  parts.push(source.slice(at))
+  return parts.join('')
+}
+
 export function htmlRows(source: string): DocRow[] {
-  const html = source.replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, ' '))
+  const data: string[] = []
+  const html = setAsideData(source, data).replace(/<!--[\s\S]*?-->/g, m => m.replace(/[^\n]/g, ' '))
   const lower = html.toLowerCase()
   // Where each line starts, for a binary search from an offset to its line.
   const starts = [0]
@@ -88,6 +116,7 @@ export function htmlRows(source: string): DocRow[] {
     }
     return style
   }
+  let pictureCount = 0
   const flush = () => {
     const isPre = blockTag === 'pre'
     const content = isPre ? spans : squash(spans)
@@ -159,8 +188,19 @@ export function htmlRows(source: string): DocRow[] {
       continue
     }
     if (tag === 'img' && !closing) {
-      const alt = attrs.match(/alt\s*=\s*"([^"]*)"/i)?.[1]
-      ;(cell ?? spans).push({ t: `[image${alt ? `: ${decode(alt)}` : ''}]`, d: 1 })
+      const alt = decode(attrs.match(/alt\s*=\s*"([^"]*)"/i)?.[1] ?? attrs.match(/alt\s*=\s*'([^']*)'/i)?.[1] ?? '').trim()
+      const written = (attrs.match(/src\s*=\s*"([^"]*)"/i)?.[1] ?? attrs.match(/src\s*=\s*'([^']*)'/i)?.[1] ?? '').trim()
+      const src = /^lpp-data:\d+$/.test(written) ? (data[Number(written.slice(9))] ?? '') : decode(written)
+      if (cell) {
+        cell.push({ t: `▣ ${alt || 'picture'}`, d: 1 })
+        continue
+      }
+      // A picture is a row of its own, where selecting it shows it: the text before it is its own row.
+      flush()
+      pictureCount += 1
+      const name = `Picture ${pictureCount}${alt ? `: ${alt.slice(0, 200)}` : ''}`
+      gap(rows)
+      rows.push({ text: `[${name}]`, anchor: `${where('img', line)}, picture ${pictureCount}`, style: 'p', unit: 'element', pic: pictureCount - 1, src, spans: [{ t: `▣ ${name}`, d: 1 }] })
       continue
     }
     if (tag === 'hr' && !closing) {

@@ -61,6 +61,7 @@ function emphasis(text: string): Span[] {
     else if (match[3] !== undefined) out.push(...emphasis(match[3]).map(span => ({ ...span, i: 1 as const })))
     else if (match[4] !== undefined) out.push(...emphasis(match[4]).map(span => ({ ...span, i: 1 as const })))
     else if (match[5] !== undefined) out.push({ t: match[5], c: 1 })
+    else if (match[6] !== undefined && match[0].startsWith('!')) out.push({ t: `▣ ${match[6] || 'picture'}`, d: 1 })
     else if (match[6] !== undefined) out.push({ t: match[6] || match[7] || 'link', l: 1 })
     else if (match[8] !== undefined) out.push({ t: match[8], s: 1 })
     else out.push({ t: ' ' })

@@ -31,6 +31,21 @@ export type DocRow = {
   marker?: string
   /** A panel's or callout's kind. */
   tone?: Tone
+  /** A picture's row: its index in the document's `pictures`, or its number in a Markdown or HTML file. */
+  pic?: number
+  /** A Markdown or HTML picture's address as written: a file beside the document, a data: URI, or a web address. */
+  src?: string
+}
+
+/** A picture's pixels for the preview, scaled down, 3 bytes a pixel; `fullWidth` × `fullHeight` its real size. */
+export type Pixels = { width: number; height: number; rgb: Uint8Array; fullWidth: number; fullHeight: number }
+
+/** A picture in a document: read and decoded only when the person looks at it. */
+export type Picture = {
+  /** What the document calls it: alt text, a title, or a file name; may be empty. */
+  label: string
+  /** Its pixels, or why it can't be shown ("an EMF drawing"). */
+  load: () => Promise<Pixels | string> | Pixels | string
 }
 
 /** A cell: the value as shown, its formula when it has one, its number when it is one. */
@@ -53,10 +68,13 @@ export type Doc =
       /** Drawn as a formatted document (no line numbers), and whether a source view exists. */
       isFormatted?: boolean
       hasSource?: boolean
+      /** The pictures in it, in order; their rows name them by `pic`. */
+      pictures?: Picture[]
     }
   | { kind: 'grid'; path: string; sheets: GridSheet[]; note?: string }
   | { kind: 'image'; path: string; png: string; width: number; height: number }
-  | { kind: 'error'; path: string; message: string }
+  /** `isNotice`: not a failure, something the person can act on (a large file without Python). */
+  | { kind: 'error'; path: string; message: string; isNotice?: boolean }
 
 /** What the person highlighted, as the comment will name it. */
 export type ReviewSelection = {

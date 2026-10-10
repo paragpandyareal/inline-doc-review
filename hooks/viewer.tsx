@@ -77,7 +77,16 @@ export type ViewerProps = {
   /** Bumped by the hooks module when Claude changed the file: the changed rows/cells glow. */
   flashKey: number
 } & (
-    | { mode: 'lines'; pal: ViewPal; rows: LineRow[]; gutter: number; width: number }
+    | {
+        mode: 'lines'
+        pal: ViewPal
+        rows: LineRow[]
+        gutter: number
+        width: number
+        /** Lines below the view, and the scrollbar's place: so it's plain there is more. */
+        moreBelow?: number
+        scroll?: { top: number; shown: number; total: number }
+      }
     | {
         mode: 'grid'
         pal: ViewPal
@@ -214,8 +223,14 @@ const Viewer: ClientModule<ViewerProps, Local> = (props, surface) => {
     const lo = drag ? Math.min(drag.a[0], drag.b[0]) : -1
     const hi = drag ? Math.max(drag.a[0], drag.b[0]) : -1
     const width = props.width
+    const ls = props.scroll
+    const lineBar = ls && ls.total > ls.shown
+    const lThumb = lineBar ? Math.max(1, Math.round((props.rows.length * ls.shown) / ls.total)) : 0
+    const lThumbAt = lineBar ? Math.round(((props.rows.length - lThumb) * ls.top) / Math.max(1, ls.total - ls.shown)) : 0
     return (
       <Box flexDirection="column">
+      <Box flexDirection="row">
+      <Box flexDirection="column" width={1 + (props.gutter > 0 ? props.gutter + 1 : 0) + 2 + width}>
         {props.rows.map((row, i) => {
           const isLit = (drag ? row.src >= lo && row.src <= hi : row.hl === 1) && row.st !== 'space'
           const mark = row.hl === 2 || row.hl === 3 ? row.hl : row.mark
@@ -277,6 +292,7 @@ const Viewer: ClientModule<ViewerProps, Local> = (props, surface) => {
                   <Text
                     key={`s${k}`}
                     backgroundColor={bg}
+                    inverse={isLit && !selBg}
                     bold={look.bold === true || span.b === 1 || isPanelTitle}
                     italic={look.italic === true || span.i === 1}
                     underline={span.l === 1}
@@ -303,6 +319,23 @@ const Viewer: ClientModule<ViewerProps, Local> = (props, surface) => {
             </Box>
           )
         })}
+      </Box>
+      {lineBar && (
+        <Box flexDirection="column">
+          {props.rows.map((_, i) => (
+            <Text key={`b${i}`} color={i >= lThumbAt && i < lThumbAt + lThumb ? pal.accent : pal.dim}>
+              {i >= lThumbAt && i < lThumbAt + lThumb ? '┃' : '│'}
+            </Text>
+          ))}
+        </Box>
+      )}
+      </Box>
+      {(props.moreBelow ?? 0) > 0 && (
+        <Text color={pal.subtle}>
+          {'  '}
+          <Text color={pal.accent}>▼</Text> {props.moreBelow} more line{props.moreBelow === 1 ? '' : 's'} below · scroll or PgDn
+        </Text>
+      )}
       </Box>
     )
   }
@@ -403,7 +436,7 @@ const Viewer: ClientModule<ViewerProps, Local> = (props, surface) => {
       {props.moreBelow > 0 && (
         <Text color={pal.subtle}>
           {' '.repeat(props.gutter + 2)}
-          <Text color={pal.accent}>▼</Text> {props.moreBelow} more row{props.moreBelow === 1 ? '' : 's'} · PgDn to scroll
+          <Text color={pal.accent}>▼</Text> {props.moreBelow} more row{props.moreBelow === 1 ? '' : 's'} below · scroll or PgDn
         </Text>
       )}
     </Box>

@@ -1,8 +1,11 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 // QA: pane flows (comments, labels, open_files, file changes, grids, surfaces).
 // Each test asserts the EXPECTED behaviour; a failing test marks a bug.
 import { expect, test } from 'claude-code/testing'
 
 import { begin, start } from './setup'
+import { serveWorkbook } from './office'
 
 const PANE = (cols = 80, rows = 30) =>
   ({
@@ -100,7 +103,7 @@ test("sheet names: an apostrophe is doubled in the label ('Bob''s Q1'!A2), as Ex
     filled = e.text
     return { isFilled: true }
   })
-  on('process.run', () => ({ value: { exitCode: 0, stdout: grid([{ name: "Bob's Q1", rows: [[{ v: 'Item' }], [{ v: 'x' }]] }]), stderr: '' } }))
+  serveWorkbook(on, grid([{ name: "Bob's Q1", rows: [[{ v: 'Item' }], [{ v: 'x' }]] }]))
   await start($)
   await $.command.run({ command: 'panda', args: '/w/b.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE() })
@@ -113,16 +116,13 @@ test("sheet names: an apostrophe is doubled in the label ('Bob''s Q1'!A2), as Ex
 
 test("sheet names: a comment on sheet 'Q1!Data' jumps back to that sheet from the list", async ($, on) => {
   begin(on)
-  on('process.run', () => ({
-    value: {
-      exitCode: 0,
-      stdout: grid([
-        { name: 'Summary', rows: [[{ v: 'Head' }], [{ v: 'SUMMARY-CELL' }]] },
-        { name: 'Q1!Data', rows: [[{ v: 'Head' }], [{ v: 'DATA-CELL' }]] },
-      ]),
-      stderr: '',
-    },
-  }))
+  serveWorkbook(
+    on,
+    grid([
+      { name: 'Summary', rows: [[{ v: 'Head' }], [{ v: 'SUMMARY-CELL' }]] },
+      { name: 'Q1!Data', rows: [[{ v: 'Head' }], [{ v: 'DATA-CELL' }]] },
+    ]),
+  )
   await start($)
   await $.command.run({ command: 'panda', args: '/w/q.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE() })
@@ -139,7 +139,7 @@ test("sheet names: a comment on sheet 'Q1!Data' jumps back to that sheet from th
 
 test('grid: a cell holding a newline keeps the row on one line', async ($, on) => {
   begin(on)
-  on('process.run', () => ({ value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: 'H1' }, { v: 'H2' }], [{ v: 'Line1\nLine2' }, { v: 'z' }], [{ v: 'a' }, { v: 'b' }]] }]), stderr: '' } }))
+  serveWorkbook(on, grid([{ name: 'S', rows: [[{ v: 'H1' }, { v: 'H2' }], [{ v: 'Line1\nLine2' }, { v: 'z' }], [{ v: 'a' }, { v: 'b' }]] }]))
   await start($)
   await $.command.run({ command: 'panda', args: '/w/nl.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE() })
@@ -150,9 +150,7 @@ test('grid: a cell holding a newline keeps the row on one line', async ($, on) =
 
 test('grid: CJK and emoji cells keep the columns aligned', async ($, on) => {
   begin(on)
-  on('process.run', () => ({
-    value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: '名前' }, { v: 'Amt' }], [{ v: '東京都庁舎' }, { v: '1', x: 1 }], [{ v: 'Tokyo' }, { v: '2', x: 2 }], [{ v: '🙂🙂' }, { v: '3', x: 3 }]] }]), stderr: '' },
-  }))
+  serveWorkbook(on, grid([{ name: 'S', rows: [[{ v: '名前' }, { v: 'Amt' }], [{ v: '東京都庁舎' }, { v: '1', x: 1 }], [{ v: 'Tokyo' }, { v: '2', x: 2 }], [{ v: '🙂🙂' }, { v: '3', x: 3 }]] }]))
   await start($)
   await $.command.run({ command: 'panda', args: '/w/cjk.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE() })
@@ -165,19 +163,17 @@ test('grid: CJK and emoji cells keep the columns aligned', async ($, on) => {
 
 test('grid: the workbook note (formulas not calculated) is shown', async ($, on) => {
   begin(on)
-  on('process.run', () => ({
-    value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: 'H' }], [{ v: '', f: '=1+1' }]] }], { note: 'Formula results could not be calculated here; run /panda setup.' }), stderr: '' },
-  }))
+  serveWorkbook(on, grid([{ name: 'S', rows: [[{ v: 'H' }], [{ v: '', f: '=UNKNOWNFUNC(1)' }]] }]))
   await start($)
   await $.command.run({ command: 'panda', args: '/w/n.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE() })
-  expect(await ui.find({ type: 'Text', text: /could not be calculated/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /couldn’t be calculated here/ })).toBeDefined()
 })
 
 test('grid: a sheet cut to 500 rows says so even while a cell is selected / scrolled to the end', async ($, on) => {
   begin(on)
   const rows = [[{ v: 'n' }], ...Array.from({ length: 499 }, (_, i) => [{ v: String(i), x: i }])]
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify({ kind: 'grid', sheets: [{ name: 'Tall', cols: ['A'], rows, isCut: true }] }), stderr: '' } }))
+  serveWorkbook(on, { sheets: [{ name: 'Tall', rows: [...rows, ...rows.slice(0, 20)] }] })
   await start($)
   await $.command.run({ command: 'panda', args: '/w/t.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE() })
@@ -319,8 +315,7 @@ test('comment edit: clearing the text deletes the comment; Send marks drafts sen
 
 test('surfaces: every surface draws a document without throwing', async ($, on) => {
   begin(on)
-  on('fs.read', () => ({ value: '# T\n\nhello' }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: grid([{ name: 'S', rows: [[{ v: 'H' }], [{ v: '1', x: 1 }]] }]), stderr: '' } }))
+  serveWorkbook(on, grid([{ name: 'S', rows: [[{ v: 'H' }], [{ v: '1', x: 1 }]] }]), () => '# T\n\nhello')
   for (const file of ['/w/s.md', '/w/s.xlsx']) {
     await start($)
     await $.command.run({ command: 'panda', args: file })

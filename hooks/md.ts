@@ -27,6 +27,8 @@ const HEADING = /^ {0,3}(#{1,6})(?:\s+(.*?))?(?:\s+#+)?\s*$/
 const RULE = /^ {0,3}([-*_])(\s*\1){2,}\s*$/
 const FENCE = /^\s*(`{3,}|~{3,})(.*)$/
 const ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(\[[ xX]\]\s+)?(.*)$/
+/** A picture: ![alt](address "title"). */
+const IMAGE = /!\[([^\]\n]{0,300})\]\(\s*<?([^)\s>]{1,2000})>?(?:\s+"[^"\n]*")?\s*\)/g
 const SETEXT = /^ {0,3}(=+|-+)\s*$/
 /** A table's delimiter row: `|---|:-:|`, `--|--`, single dashes allowed. */
 const DELIMITER = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
@@ -47,6 +49,7 @@ export function markdownRows(source: string): DocRow[] {
   /** The indents of the list levels open now: an item's depth is its place here. */
   let levels: number[] = []
   let i = 0
+  let pictureCount = 0
 
   const where = (from: number, to: number) => {
     const span = from === to ? `line ${from + 1}` : `lines ${from + 1}–${to + 1}`
@@ -217,8 +220,20 @@ export function markdownRows(source: string): DocRow[] {
       continue
     }
     gap(rows)
-    const spans = markdownInline(text)
-    rows.push({ text: plain(spans), anchor: where(start, i - 1), style: 'p', unit: 'line', spans })
+    // Pictures (![alt](file.png)) each get a row of its own after the text, where selecting one shows it.
+    const pictures = [...text.matchAll(IMAGE)]
+    const rest = text.replace(IMAGE, '').trim()
+    if (rest !== '' || pictures.length === 0) {
+      const spans = markdownInline(text)
+      rows.push({ text: plain(spans), anchor: where(start, i - 1), style: 'p', unit: 'line', spans })
+    }
+    for (const found of pictures) {
+      pictureCount += 1
+      const name = `Picture ${pictureCount}${found[1] ? `: ${found[1]}` : ''}`
+      const span = start === i - 1 ? `line ${start + 1}` : `lines ${start + 1}–${i}`
+      if (rows[rows.length - 1]?.pic !== undefined || rest !== '') gap(rows)
+      rows.push({ text: `[${name}]`, anchor: `${span}, picture ${pictureCount}${heading ? ` (under "${heading}")` : ''}`, style: 'p', unit: 'line', pic: pictureCount - 1, src: found[2] ?? '', spans: [{ t: `▣ ${name}`, d: 1 }] })
+    }
   }
 
   return trimSpaces(rows)

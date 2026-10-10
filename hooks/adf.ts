@@ -201,7 +201,8 @@ export function adfRows(doc: AdfNode): DocRow[] {
       case 'media': {
         const media = node.type === 'media' ? node : kids.find(kid => kid.type === 'media')
         gap(rows)
-        row([{ t: `▣ image${media?.attrs?.alt ? `: ${str(media.attrs.alt)}` : ''}`, d: 1 }], path, { style: 'p' })
+        // The picture itself lives in Confluence, not in the file: said plainly.
+        row([{ t: `▣ image${media?.attrs?.alt ? `: ${str(media.attrs.alt)}` : ''} (stored in Confluence, so it can’t be shown here)`, d: 1 }], path, { style: 'p' })
         return
       }
       case 'extension':

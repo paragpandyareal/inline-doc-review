@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 // QA: auto-open, unsupported files via the command, and what Claude's edits do to the view.
 import { expect, test } from 'claude-code/testing'
 
@@ -52,5 +54,5 @@ test('a quoted path (as people paste them) opens', async ($, on) => {
   await start($)
   const ran = await $.command.run({ command: 'panda', args: '"/w/my file.md"' })
   console.log('quoted path ->', asked, '|', ran.text)
-  expect(ran.text).toBe('Review pane opened.')
+  expect(ran.text).toBe('Lazy Panda Panel opened.')
 })

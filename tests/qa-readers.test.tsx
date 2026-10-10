@@ -1,3 +1,5 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 // QA: Markdown / HTML / ADF readers on malformed and edge-case input.
 // Each test asserts the EXPECTED behaviour; a failing test marks a bug.
 import { expect, test } from 'claude-code/testing'

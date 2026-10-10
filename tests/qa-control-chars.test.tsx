@@ -1,7 +1,10 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 // QA: control characters in documents must not make the viewer refuse its tree.
 import { expect, test } from 'claude-code/testing'
 
 import { begin, start } from './setup'
+import { serveWorkbook } from './office'
 
 const PANE = { component: 'Pane', requestId: 'review', props: { title: 'Review', isFocused: true, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} } } as const
 
@@ -37,7 +40,7 @@ for (const [path, text] of CASES) {
 test('control characters: a grid cell with a tab / CR / ESC draws', async ($, on) => {
   begin(on)
   const doc = { kind: 'grid', sheets: [{ name: 'S', cols: ['A', 'B'], rows: [[{ v: 'H' }, { v: 'I' }], [{ v: 'a\tb' }, { v: 'c\r\nd' }], [{ v: 'x\u001b[1my' }, { v: 'z' }]], isCut: false }] }
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(doc), stderr: '' } }))
+  serveWorkbook(on, doc)
   await start($)
   await $.command.run({ command: 'panda', args: '/w/c.xlsx' })
   let error = ''

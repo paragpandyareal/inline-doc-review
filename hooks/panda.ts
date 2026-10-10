@@ -8,29 +8,25 @@
  * any terminal without image support.
  */
 
-/** B ears, W face, K eye patches and nose, O a soft outline that keeps the face apart from a light background. */
+/** Asleep: B ears, W face, K eye patches (eyes shut) and nose, O a soft outline that keeps the face apart from a light background. */
 const ART = [
-  '...BBBB........BBBB...',
-  '..BBBBBBOOOOOOBBBBBB..',
-  '..BBBBBWWWWWWWWBBBBB..',
-  '...BBBWWWWWWWWWWBBB...',
-  '...OWWWWWWWWWWWWWWO...',
-  '..OWWWWWWWWWWWWWWWWO..',
-  '.OWWWWKKKWWWWKKKWWWWO.',
-  '.OWWWKKKKKWWKKKKKWWWO.',
-  '.OWWKKKWWKWWKWWKKKWWO.',
-  '.OWWKKKKKKWWKKKKKKWWO.',
-  '.OWWWKKKKWWWWKKKKWWWO.',
-  '.OWWWWWWWWKKWWWWWWWWO.',
-  '.OWWWWWWWWKKWWWWWWWWO.',
-  '..OWWWWWWKWWKWWWWWWO..',
-  '...OWWWWWWWWWWWWWWO...',
-  '....OOWWWWWWWWWWOO....',
-  '......OOOOOOOOOO......',
-  '......................',
+  '.BBB..........BBB.',
+  'BBBBB........BBBBB',
+  'BBBBOOOOOOOOOOBBBB',
+  '.BBWWWWWWWWWWWWBB.',
+  '.OWWWWWWWWWWWWWWO.',
+  'OWWWWWWWWWWWWWWWWO',
+  'OWWKKKKWWWWKKKKWWO',
+  'OWKKKKKWWWWKKKKKWO',
+  'OWKKWWWWWWWWWWKKWO',
+  '.OWWWWWWKKWWWWWWO.',
+  '..OWWWWWWWWWWWWO..',
+  '...OOOWWWWWWOOO...',
+  '......OOOOOO......',
 ]
 
-const COLORS: Record<string, string> = { B: '#3C3C42', W: '#F3F3EF', K: '#19191C', O: '#8C8C94' }
+/** Greys that are exact entries of the 256-colour palette, so a terminal without true colour draws them as they are (near-black became navy). */
+const COLORS: Record<string, string> = { B: '#3A3A3A', W: '#EEEEEE', K: '#121212', O: '#8A8A8A' }
 
 /** One run of characters drawn alike. */
 export type PandaRun = { text: string; color?: string; background?: string }

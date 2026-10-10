@@ -1,6 +1,9 @@
+// Copyright (c) 2026 Parag Pandya. MIT License, see LICENSE.
+// Lazy Panda Panel: https://github.com/paragpandyareal/lazy-panda-panel
 import { expect, test } from 'claude-code/testing'
 
 import { PANE, begin, start } from './setup'
+import { serveWorkbook } from './office'
 
 const NOTES = ['# Plan', '', 'We ship in May.', 'Budget is 40k.', 'Risks: none.'].join('\n')
 
@@ -16,7 +19,7 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
 
   await start($)
   const opened = await $.command.run({ command: 'panda', args: '/work/plan.txt' })
-  expect(opened.text).toBe('Review pane opened.')
+  expect(opened.text).toBe('Lazy Panda Panel opened.')
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface, ...PANE })
@@ -36,8 +39,7 @@ test('a highlighted range becomes a comment that names it, and lands in the prom
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
   expect(await ui.find({ type: 'Text', text: /Comments · 2/ })).toBeDefined()
   await ui.press({ key: 'fill' })
-  expect(filled).toContain('File: `/work/plan.txt`\n   Location: lines 3–4')
-  expect(filled).toContain('<file-excerpt>\n   > We ship in May.\n   > Budget is 40k.\n   </file-excerpt>')
+  expect(filled).toMatch(/<(file-excerpt-[0-9a-f]{8})> (?:\/work\/)?plan\.txt: lines 3–4\n {3}> We ship in May\.\n {3}> Budget is 40k\.\n {3}<\/\1>/)
   expect(filled).toContain('Feedback: Say which May.')
   expect(await ui.find({ key: 'send' })).toBeUndefined()
 })
@@ -264,7 +266,7 @@ const BUDGET = {
 
 test('a spreadsheet shows values, marks formulas, and shows the formula of the clicked cell', async ($, on) => {
   begin(on)
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  serveWorkbook(on, BUDGET)
   await start($)
   await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
 
@@ -289,7 +291,7 @@ test('a spreadsheet shows values, marks formulas, and shows the formula of the c
 
 test('arrow keys in every direction, past every edge, never break the pane', async ($, on) => {
   begin(on)
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  serveWorkbook(on, BUDGET)
   await start($)
   await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
@@ -309,8 +311,7 @@ test('arrow keys in every direction, past every edge, never break the pane', asy
 
 test('arrow keys on the file tabs move between files', async ($, on) => {
   begin(on)
-  on('fs.read', () => ({ value: NOTES }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  serveWorkbook(on, BUDGET, () => NOTES)
   await start($)
   await $.command.run({ command: 'panda', args: '/work/plan.txt' })
   await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
@@ -325,7 +326,7 @@ test('arrow keys on the file tabs move between files', async ($, on) => {
 test('comment on C3, C4 and C6, then go back and edit one before sending', async ($, on) => {
   let filled = ''
   begin(on)
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  serveWorkbook(on, BUDGET)
   on('prompt.fill', ($, e) => {
     filled = e.text
     return { isFilled: true }
@@ -368,7 +369,7 @@ test('after sending, a spinner shows; when Claude changes the file, the changed 
   begin(on)
   let budget: typeof BUDGET = BUDGET
   on('prompt.submit', ($, e) => ({ text: e.text }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(budget), stderr: '' } }))
+  serveWorkbook(on, () => budget)
   await start($)
   await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
   const ui = await $.ui.mount({ plugin: 'lazy-panda-panel', surface: 'terminal', ...PANE })
@@ -465,7 +466,7 @@ test('an edit made by a command refreshes the open file at once; the spinner cle
   on('fs.list', () => ({ value: [] }))
   on('turn.complete', () => ({ text: 'done' }))
   on('prompt.submit', (_, e) => ({ text: e.text }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(budget), stderr: '' } }))
+  serveWorkbook(on, () => budget)
   // What Claude's command does: rewrite the workbook on disk.
   on('tool.call', { tool: 'Bash' }, () => {
     const edited = JSON.parse(JSON.stringify(BUDGET)) as typeof BUDGET
@@ -493,7 +494,7 @@ test('an edit made by a command refreshes the open file at once; the spinner cle
 test('when Claude finishes without changing the file, sent comments stop showing as in progress', async ($, on) => {
   begin(on)
   on('prompt.submit', (_, e) => ({ text: e.text }))
-  on('process.run', () => ({ value: { exitCode: 0, stdout: JSON.stringify(BUDGET), stderr: '' } }))
+  serveWorkbook(on, BUDGET)
   on('turn.complete', () => ({ text: 'done' }))
   await start($)
   await $.command.run({ command: 'panda', args: '/work/pilot-budget.xlsx' })
@@ -514,5 +515,5 @@ test('an empty pane shows the napping panda', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /The panda is napping/ })).toBeDefined()
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn).toContain('▀')
-  expect(drawn).toContain('#19191C')
+  expect(drawn).toContain('#121212')
 })
